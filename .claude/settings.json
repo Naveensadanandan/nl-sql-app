@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "enabledMcpjsonServers": ["context7"],
+  "permissions": {
+    "allow": [
+      "mcp__context7",
+      "Bash(pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python -m evals.run:*)",
+      "Bash(ruff check:*)",
+      "Bash(ruff format:*)",
+      "Bash(mypy:*)",
+      "Bash(pip list:*)",
+      "Bash(pip show:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(docker compose ps:*)",
+      "Bash(docker compose logs:*)",
+      "PowerShell(pytest:*)",
+      "PowerShell(ruff check:*)",
+      "PowerShell(ruff format:*)",
+      "PowerShell(mypy:*)"
+    ],
+    "ask": [
+      "Bash(docker compose down:*)",
+      "Bash(alembic downgrade:*)",
+      "Bash(git push:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./.env.prod)",
+      "Bash(docker compose down -v:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/format_py.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
