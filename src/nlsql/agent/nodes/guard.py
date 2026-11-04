@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -11,6 +12,13 @@ from nlsql.agent.state import AgentState
 from nlsql.core.config import get_settings
 
 _PROMPT = (Path(__file__).parent.parent / "prompts" / "guard.md").read_text(encoding="utf-8")
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
 
 _REJECTIONS = {
     "off_topic": (
@@ -32,7 +40,11 @@ _REJECTIONS = {
 def _guard_llm() -> Runnable[Any, Any]:
     # Fast model: classification is routing work (see CLAUDE.md model tiering).
     # langchain-anthropic's stubs mark timeout/stop as required; they are optional at runtime.
-    llm = ChatOpenRouter(model_name=get_settings().fast_model, temperature=0)  # type: ignore[call-arg]
+    # ChatOpenRouter reads OPENROUTER_API_KEY; this project's .env names it OPENROUTER_API.
+    api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ["OPENROUTER_API"]
+    llm = ChatOpenRouter(  # type: ignore[call-arg]
+        model_name=get_settings().fast_model, temperature=0, api_key=api_key
+    )
     return llm.with_structured_output(GuardDecision)
 
 
