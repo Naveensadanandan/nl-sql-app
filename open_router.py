@@ -20,12 +20,12 @@ llm = ChatOpenRouter(
 )
 
 # If the primary free model stays rate-limited, fall back to other free models.
-_fallbacks = [
-    ChatOpenRouter(model=m, temperature=0.3, max_retries=2,
+llm = ChatOpenRouter(model="nvidia/nemotron-3-ultra-550b-a55b:free", 
+                   temperature=0.3, 
+                   max_retries=2,
                    api_key=os.environ["OPENROUTER_API"])
-    for m in ("google/gemma-4-31b-it:free", "nvidia/nemotron-3-ultra-550b-a55b:free")
-]
-llm = llm.with_fallbacks(_fallbacks)
+
+# llm = llm.with_fallbacks(_fallbacks)
 
 # 2. Define a simple LangGraph node function
 def call_agent(state: MessagesState):
