@@ -15,7 +15,6 @@ class AskResponse(BaseModel):
     question: str
     category: GuardCategory
     reason: str
-    # Set when the guard filtered the question; None while later nodes don't exist yet.
     answer: str | None = None
 
 
@@ -23,7 +22,6 @@ class AskResponse(BaseModel):
 async def ask(body: AskRequest) -> AskResponse:
     result = await graph.ainvoke({"question": body.question})
     decision = result["guard"]
-    schema = result['']
     return AskResponse(
         question=body.question,
         category=decision.category,
