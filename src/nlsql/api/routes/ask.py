@@ -15,7 +15,6 @@ class AskResponse(BaseModel):
     question: str
     category: GuardCategory
     reason: str
-    # Set when the guard filtered the question; None while later nodes don't exist yet.
     answer: str | None = None
 
 

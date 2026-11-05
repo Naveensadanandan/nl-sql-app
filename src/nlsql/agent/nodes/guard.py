@@ -35,18 +35,12 @@ _REJECTIONS = {
     ),
 }
 
-
 @lru_cache
-def _guard_llm() -> Runnable[Any, Any]:
-    # Fast model: classification is routing work (see CLAUDE.md model tiering).
-    # langchain-anthropic's stubs mark timeout/stop as required; they are optional at runtime.
-    # ChatOpenRouter reads OPENROUTER_API_KEY; this project's .env names it OPENROUTER_API.
-    api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ["OPENROUTER_API"]
-    llm = ChatOpenRouter(  # type: ignore[call-arg]
-        model_name=get_settings().fast_model, temperature=0, api_key=api_key
-    )
+def _guard_llm():
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    llm = ChatOpenRouter(model=get_settings().fast_model, temperature=0, api_key=api_key)
     return llm.with_structured_output(GuardDecision)
-
+ 
 
 async def guard(state: AgentState) -> dict[str, Any]:
     """Classify the question so the graph can drop anything that is not a data question."""

@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     fast_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
     strong_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    database_url: str
 
 
 @lru_cache
