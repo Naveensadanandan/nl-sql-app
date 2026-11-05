@@ -23,6 +23,7 @@ class AskResponse(BaseModel):
 async def ask(body: AskRequest) -> AskResponse:
     result = await graph.ainvoke({"question": body.question})
     decision = result["guard"]
+    schema = result['']
     return AskResponse(
         question=body.question,
         category=decision.category,
