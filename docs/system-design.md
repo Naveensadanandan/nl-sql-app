@@ -22,7 +22,7 @@ Status: Draft v1 · 2026-11-02 · Branch `dev/system-design`
           └──────────────┘       │  /sources /chat /glossary /feedback          │
                                  │        │                                     │
                                  │        ▼                                     │
-                                 │  LangGraph agent ──▶ LLM (Claude, tiered)    │
+                                 │  LangGraph agent ──▶ LLM (Claude/Openrouter, tiered)    │
                                  └───┬───────┬────────┬────────┬────────────────┘
                                      │       │        │        │ enqueue
                read-only, timeout    │       │        │        ▼

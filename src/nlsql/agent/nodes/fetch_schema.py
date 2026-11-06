@@ -1,8 +1,10 @@
 from sqlalchemy import create_engine, inspect
-from nlsql.core.config import get_settings
-from nlsql.agent.state import AgentState
 
-def get_table_schema(table: str, schema: str = 'public') -> 'dict':
+from nlsql.agent.state import AgentState
+from nlsql.core.config import get_settings
+
+
+def get_table_schema(table: str, schema: str = "public") -> "dict":
     engine = create_engine(get_settings().database_url)
     insp = inspect(engine)
     return {
@@ -15,7 +17,7 @@ def get_table_schema(table: str, schema: str = 'public') -> 'dict':
         "foreign_keys": insp.get_foreign_keys(table, schema=schema),
     }
 
+
 def fetch_schema(state: AgentState) -> dict:
     table_name = "retail_sales"
-    return {"schema": get_table_schema(table = table_name)}
-
+    return {"schema": get_table_schema(table=table_name)}

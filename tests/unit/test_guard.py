@@ -1,9 +1,15 @@
 import pytest
 
 from nlsql.agent.graph import graph
+from nlsql.agent.nodes import analyze_ambiguity as amb_module
 from nlsql.agent.nodes import guard as guard_module
 from nlsql.agent.nodes.guard import reject, route_after_guard
-from nlsql.agent.schemas import GuardDecision
+from nlsql.agent.schemas import AmbiguityReport, GuardDecision
+
+
+class _FakeAmbiguity:
+    async def ainvoke(self, _messages):
+        return AmbiguityReport()
 
 
 def _state(category: str) -> dict:
@@ -35,6 +41,7 @@ class _FakeLLM:
 )
 async def test_graph_filters(monkeypatch, category, expects_answer):
     monkeypatch.setattr(guard_module, "_guard_llm", lambda: _FakeLLM(category))
+    monkeypatch.setattr(amb_module, "_ambiguity_llm", lambda: _FakeAmbiguity())
     result = await graph.ainvoke({"question": "anything"})
     assert result["guard"].category == category
     assert ("answer" in result) is expects_answer

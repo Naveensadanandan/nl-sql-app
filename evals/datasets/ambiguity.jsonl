@@ -1,0 +1,8 @@
+{"question": "Who are our best customers?", "business_context": "", "expected_terms": ["best customers"]}
+{"question": "Who are our best customers?", "business_context": "Best customers = top 5 customers by total sales amount.", "expected_terms": []}
+{"question": "Show sales on super routes", "business_context": "We distribute FMCG goods via van routes.", "expected_terms": ["super routes"]}
+{"question": "What was our profit recently?", "business_context": "", "expected_terms": ["profit", "recently"]}
+{"question": "Which products are selling high?", "business_context": "", "expected_terms": ["high"]}
+{"question": "Total sales by region in March 2024", "business_context": "", "expected_terms": []}
+{"question": "Top 10 products by revenue", "business_context": "", "expected_terms": []}
+{"question": "how many 5l coconut oil units did we sell in March", "business_context": "", "expected_terms": []}
