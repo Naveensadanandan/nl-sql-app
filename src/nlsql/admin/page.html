@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NL-SQL Admin</title>
+<style>
+  body { font: 15px system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+  fieldset { margin-bottom: 1.5rem; border: 1px solid #ccc; border-radius: 6px; }
+  label { display: block; margin: .5rem 0 .2rem; font-weight: 600; }
+  input, button { font: inherit; padding: .35rem .5rem; }
+  input[type=text], input[type=password] { width: 100%; box-sizing: border-box; }
+  pre { background: #f4f4f4; padding: .75rem; border-radius: 6px; white-space: pre-wrap; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #1b1b1b; color: #eee; } pre { background: #2a2a2a; }
+    fieldset { border-color: #444; } input { background: #2a2a2a; color: #eee; }
+  }
+</style>
+</head>
+<body>
+<h1>NL-SQL Admin</h1>
+
+<label for="key">Admin key</label>
+<input id="key" type="password" autocomplete="off">
+<label for="org">Organisation id</label>
+<input id="org" type="text" placeholder="acme">
+<p><button onclick="call('GET','/admin/health')">Check Qdrant / Elasticsearch</button></p>
+
+<fieldset>
+  <legend>Glossary CSV → Qdrant</legend>
+  <p>Columns: <code>name, description, section</code> (metric | business_definition);
+     optional <code>synonyms</code> (a|b|c), <code>status</code>, <code>user_id</code>.</p>
+  <input id="csv" type="file" accept=".csv">
+  <button onclick="uploadCsv()">Upload &amp; index</button>
+</fieldset>
+
+<fieldset>
+  <legend>Database values → Elasticsearch</legend>
+  <label for="schema">Postgres schema</label>
+  <input id="schema" type="text" placeholder="ws_acme">
+  <label for="tables">Tables (comma separated, blank = all)</label>
+  <input id="tables" type="text" placeholder="products, customers">
+  <p>
+    <button onclick="listTables()">List tables</button>
+    <button onclick="indexValues()">Index category values</button>
+  </p>
+</fieldset>
+
+<pre id="out">Ready.</pre>
+<script>
+const $ = (id) => document.getElementById(id);
+async function call(method, url, body) {
+  $('out').textContent = 'Working…';
+  const headers = { 'X-Admin-Key': $('key').value };
+  if (body && !(body instanceof FormData)) headers['Content-Type'] = 'application/json';
+  try {
+    const r = await fetch(url, { method, headers,
+      body: body instanceof FormData ? body : body && JSON.stringify(body) });
+    $('out').textContent = r.status + ' ' + JSON.stringify(await r.json(), null, 2);
+  } catch (e) { $('out').textContent = String(e); }
+}
+function uploadCsv() {
+  const f = $('csv').files[0];
+  if (!f) { $('out').textContent = 'Choose a CSV first.'; return; }
+  const fd = new FormData();
+  fd.append('organisation_id', $('org').value);
+  fd.append('file', f);
+  call('POST', '/admin/glossary/upload', fd);
+}
+function listTables() {
+  call('GET', '/admin/values/tables?schema_name=' + encodeURIComponent($('schema').value));
+}
+function indexValues() {
+  const tables = $('tables').value.split(',').map(t => t.trim()).filter(Boolean);
+  call('POST', '/admin/values/index', {
+    organisation_id: $('org').value, schema_name: $('schema').value,
+    tables: tables.length ? tables : null });
+}
+</script>
+</body>
+</html>

@@ -1,13 +1,15 @@
 import os
-from langgraph.graph import StateGraph, MessagesState, START, END
-from langchain_openrouter import ChatOpenRouter
+
 from langchain_core.messages import HumanMessage
+from langchain_openrouter import ChatOpenRouter
+from langgraph.graph import END, START, MessagesState, StateGraph
 
 try:
-  from dotenv import load_dotenv
-  load_dotenv()
+    from dotenv import load_dotenv
+
+    load_dotenv()
 except ImportError:
-  pass
+    pass
 
 # 1. Initialize the OpenRouter model (e.g., Claude 3.5 Sonnet or a free model)
 # ChatOpenRouter looks for OPENROUTER_API_KEY; our env var is OPENROUTER_API
@@ -20,18 +22,22 @@ llm = ChatOpenRouter(
 )
 
 # If the primary free model stays rate-limited, fall back to other free models.
-llm = ChatOpenRouter(model="nvidia/nemotron-3-ultra-550b-a55b:free", 
-                   temperature=0.3, 
-                   max_retries=2,
-                   api_key=os.environ["OPENROUTER_API"])
+llm = ChatOpenRouter(
+    model="nvidia/nemotron-3-ultra-550b-a55b:free",
+    temperature=0.3,
+    max_retries=2,
+    api_key=os.environ["OPENROUTER_API"],
+)
 
 # llm = llm.with_fallbacks(_fallbacks)
+
 
 # 2. Define a simple LangGraph node function
 def call_agent(state: MessagesState):
     messages = state["messages"]
     response = llm.invoke(messages)
     return {"messages": [response]}
+
 
 # 3. Build your LangGraph state workflow
 builder = StateGraph(MessagesState)
