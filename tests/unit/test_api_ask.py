@@ -2,8 +2,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nlsql.agent.nodes import analyze_ambiguity as amb_module
+from nlsql.agent.nodes import extract_entities as ext_module
+from nlsql.agent.nodes import fetch_schema as schema_module
 from nlsql.agent.nodes import guard as guard_module
-from nlsql.agent.schemas import AmbiguityReport, GuardDecision
+from nlsql.agent.schemas import AmbiguityReport, EntityExtraction, GuardDecision
 from nlsql.api.main import app
 
 client = TestClient(app)
@@ -14,9 +16,16 @@ class _FakeAmbiguity:
         return AmbiguityReport()
 
 
+class _FakeExtract:
+    async def ainvoke(self, _messages):
+        return EntityExtraction()
+
+
 @pytest.fixture(autouse=True)
 def _fake_ambiguity(monkeypatch):
     monkeypatch.setattr(amb_module, "_ambiguity_llm", lambda: _FakeAmbiguity())
+    monkeypatch.setattr(ext_module, "_extract_llm", lambda: _FakeExtract())
+    monkeypatch.setattr(schema_module, "get_table_schema", lambda table: {"table": table})
 
 
 class _FakeLLM:

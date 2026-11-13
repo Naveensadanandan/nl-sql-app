@@ -8,7 +8,7 @@ questions over uploaded CSVs or a connected Postgres database. It returns a SQL 
 and shows how it read the question, using only definitions it can trace to a source.
 
 ## WHAT
-- **Agent**: LangGraph state graph (`src/nlsql/agent/graph.py`) on LangChain, with Claude models through `langchain-anthropic`
+- **Agent**: LangGraph state graph (`src/nlsql/agent/graph.py`) on LangChain, with Claude/open router models models through `langchain-anthropic`/ `ChatOpenRouter`
 - **API**: FastAPI (`src/nlsql/api`), streaming with SSE. **UI**: Streamlit (`ui/`)
 - **App DB**: Postgres 16. It holds metadata, the glossary (source of truth), the query log, the LangGraph checkpointer, and the CSV uploads, which go into one `ws_<id>` schema per workspace
 - **Value resolution**: Elasticsearch 8. It indexes distinct values of text columns, normalized for units and synonyms

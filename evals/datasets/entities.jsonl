@@ -1,0 +1,7 @@
+{"question": "Total sales of 5l coconut oil in Kerala last month", "expected_entities": [{"text": "5l coconut oil", "kind": "db_value"}, {"text": "Kerala", "kind": "db_value"}]}
+{"question": "Who are our best customers in the online channel?", "expected_entities": [{"text": "best customers", "kind": "business_term"}, {"text": "online", "kind": "db_value"}]}
+{"question": "What is the AOV for Acme Ltd this year?", "expected_entities": [{"text": "AOV", "kind": "metric"}, {"text": "Acme Ltd", "kind": "db_value"}]}
+{"question": "Show profit on super routes", "expected_entities": [{"text": "profit", "kind": "metric"}, {"text": "super routes", "kind": "business_term"}]}
+{"question": "Total sales by region for the top 10 products", "expected_entities": []}
+{"question": "Count of orders in 2024", "expected_entities": []}
+{"question": "Churn rate of active users using coco oil 1 ltr", "expected_entities": [{"text": "churn rate", "kind": "metric"}, {"text": "active users", "kind": "business_term"}, {"text": "coco oil 1 ltr", "kind": "db_value"}]}

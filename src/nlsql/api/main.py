@@ -1,10 +1,9 @@
 from fastapi import FastAPI
 
-from nlsql.api.routes import ambiguity, ask
+from nlsql.api.routes import ask
 
 app = FastAPI(title="NL-SQL")
 app.include_router(ask.router)
-app.include_router(ambiguity.router)
 
 
 @app.get("/health")

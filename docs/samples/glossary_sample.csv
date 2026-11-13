@@ -1,0 +1,11 @@
+name,description,section,synonyms,status,user_id
+best customers,Top 5 customers ranked by total sales amount over the selected period,business_definition,top customers|highest buyers|key accounts,approved,
+active customer,A customer with at least one order in the last 90 days,business_definition,live customer|recent buyer,approved,
+churned customer,A customer with no orders in the last 180 days after having ordered before,business_definition,lost customer|inactive customer,approved,
+super routes,Delivery routes with more than 100 completed deliveries per month,business_definition,top routes|busy routes,approved,
+high value order,An order whose total amount is above 10000,business_definition,big order|large order,approved,
+revenue,Sum of order total amount excluding tax and cancelled orders,metric,sales|total sales|turnover,approved,
+average order value,Revenue divided by the number of non-cancelled orders,metric,AOV|avg order value|basket size,approved,
+repeat purchase rate,Share of customers who placed more than one order in the period,metric,repeat rate|return rate,approved,
+gross margin,Revenue minus cost of goods sold divided by revenue,metric,GM|margin|profit margin,approved,
+my priority accounts,Accounts this user personally tracks: customers tagged as priority,business_definition,my key accounts,approved,u_7

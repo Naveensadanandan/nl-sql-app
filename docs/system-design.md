@@ -101,17 +101,21 @@ Verified `(question, sql, workspace_id, tables, success_count)` pairs come from 
 ```python
 class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
-    workspace_id: str; source_id: str
-    question: str                    # current, possibly rewritten after clarification
+    workspace_id: str
+    source_id: str
+    question: str  # current, possibly rewritten after clarification
     intent: Literal["data_query", "define_term", "meta", "out_of_scope"]
     ambiguity: AmbiguityReport | None
-    entities: list[Entity]           # literal values + business terms
+    entities: list[Entity]  # literal values + business terms
     resolved_values: list[ValueMatch]
     glossary_hits: list[GlossaryHit]
-    schema_card: str; examples: list[Example]
-    sql: str | None; validation: ValidationResult | None
-    result: QueryResult | None; attempts: int
-    interpretation: list[str]        # human-readable grounding notes
+    schema_card: str
+    examples: list[Example]
+    sql: str | None
+    validation: ValidationResult | None
+    result: QueryResult | None
+    attempts: int
+    interpretation: list[str]  # human-readable grounding notes
     suggestions: list[str]
 ```
 
