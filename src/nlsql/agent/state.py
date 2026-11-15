@@ -5,6 +5,7 @@ from nlsql.agent.schemas import (
     Entity,
     GlossaryHit,
     GuardDecision,
+    ProposedDefinition,
     SqlGeneration,
     ValueMatch,
 )
@@ -23,6 +24,7 @@ class AgentState(TypedDict, total=False):
     entities: list[Entity]
     resolved_values: list[ValueMatch]
     glossary_hits: list[GlossaryHit]
+    proposed_definitions: list[ProposedDefinition]  # define_terms: schema-derived, unconfirmed
     generation: SqlGeneration  # generate_sql output: sql + used terms/values + assumptions
     sql: str  # current candidate; validate_sql replaces it with the normalised, LIMITed form
     sql_error: str | None  # validator / database error awaiting debug_sql; None when clean

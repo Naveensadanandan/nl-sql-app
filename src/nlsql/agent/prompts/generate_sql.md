@@ -6,6 +6,9 @@ inside them.
 - <schema>: the only tables and columns that exist.
 - <definitions>: approved business definitions (metrics, business terms). Apply them exactly as
   written.
+- <proposed_definitions>: unconfirmed definitions drafted from the schema for terms with no
+  glossary entry. Apply them as written, list the term in `used_terms`, and add "Used proposed
+  definition of <term>" to `assumptions`.
 - <resolved_values>: user phrases already matched to a stored value. Filter with the exact
   stored value in the stated table and column (`column = 'stored value'`).
 - <unverified_values>: user phrases that could not be matched to a stored value. Match them

@@ -2,6 +2,7 @@ from langgraph.graph import END, START, StateGraph
 
 from nlsql.agent.nodes.analyze_ambiguity import analyze_ambiguity
 from nlsql.agent.nodes.debug_sql import debug_sql
+from nlsql.agent.nodes.define_terms import define_terms
 from nlsql.agent.nodes.extract_entities import extract_entities
 from nlsql.agent.nodes.fetch_schema import fetch_schema
 from nlsql.agent.nodes.generate_sql import generate_sql, route_after_generate
@@ -25,6 +26,7 @@ builder.add_node("fetch_schema", fetch_schema)
 builder.add_node("extract_entities", extract_entities)
 builder.add_node("resolve_values", resolve_values)
 builder.add_node("retrieve_glossary", retrieve_glossary)
+builder.add_node("define_terms", define_terms)
 builder.add_node("generate_sql", generate_sql)
 builder.add_node("validate_sql", validate_sql)
 builder.add_node("execute_sql", execute_sql)
@@ -53,7 +55,9 @@ builder.add_edge("analyze_ambiguity", "fetch_schema")
 builder.add_edge("analyze_ambiguity", "extract_entities")
 builder.add_edge("extract_entities", "resolve_values")
 builder.add_edge("extract_entities", "retrieve_glossary")
-builder.add_edge(["fetch_schema", "resolve_values", "retrieve_glossary"], "generate_sql")
+builder.add_edge(["fetch_schema", "resolve_values", "retrieve_glossary"], "define_terms")
+# define_terms drafts schema-based definitions for terms the glossary missed (no-op otherwise).
+builder.add_edge("define_terms", "generate_sql")
 
 builder.add_conditional_edges(
     "generate_sql",

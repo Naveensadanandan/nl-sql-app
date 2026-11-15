@@ -159,6 +159,40 @@ class SqlGeneration(BaseModel):
     )
 
 
+class ProposedDefinition(BaseModel):
+    """A definition drafted from the table schema for a term with no glossary entry."""
+
+    term: str = Field(description="The term exactly as listed in <undefined_terms>.")
+    feasible: bool = Field(
+        description=(
+            "True only if the schema has the columns needed to compute or identify the term. "
+            "False if it would need data that is not in the schema (then give no expression)."
+        )
+    )
+    definition: str = Field(
+        default="",
+        description="Plain-language definition with the formula or rule. Empty if infeasible.",
+    )
+    sql_expression: str = Field(
+        default="",
+        description="A SQL fragment (expression or predicate) over schema columns. Empty if infeasible.",
+    )
+    columns_used: list[str] = Field(
+        default_factory=list,
+        description="Every column relied on, as 'table.column', exactly as in <schema>.",
+    )
+    reasoning: str = Field(default="", description="One short sentence on why this reading fits.")
+    status: Literal["proposed"] = "proposed"  # becomes approved only after user confirmation
+
+
+class DefinitionDrafts(BaseModel):
+    """Structured output of the define_terms node."""
+
+    definitions: list[ProposedDefinition] = Field(
+        default_factory=list, description="One item per term in <undefined_terms>."
+    )
+
+
 class SqlFix(BaseModel):
     """Structured output of the debug_sql node."""
 

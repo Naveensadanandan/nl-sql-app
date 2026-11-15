@@ -36,4 +36,11 @@ def respond(state: AgentState) -> dict[str, Any]:
         text += f" Results are capped at {n} rows; narrow the question to see the rest."
     if gen and gen.assumptions:
         text += " Assumptions: " + "; ".join(gen.assumptions) + "."
+    proposed = [d for d in state.get("proposed_definitions", []) if d.feasible]
+    if proposed:
+        text += (
+            " Proposed definitions (unconfirmed): "
+            + "; ".join(f"{d.term} = {d.definition}" for d in proposed)
+            + "."
+        )
     return {"answer": text}

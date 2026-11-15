@@ -63,6 +63,7 @@ def _schema_block(schema: Any) -> str:
 
 def _undefined_terms(state: AgentState) -> list[str]:
     covered = {h.query for h in state.get("glossary_hits", [])}
+    covered |= {d.term for d in state.get("proposed_definitions", []) if d.feasible}
     return [
         e.text
         for e in state.get("entities", [])
@@ -91,12 +92,18 @@ def grounding_context(state: AgentState) -> str:
                 f'- "{line(v.text)}" ({line(v.status)})'
                 + (f" candidates: {options}" if options else "")
             )
+    proposed = [
+        f"- {line(d.term)}: {line(d.definition)} | SQL: {line(d.sql_expression)}"
+        for d in state.get("proposed_definitions", [])
+        if d.feasible
+    ]
     undefined = [f"- {line(t)}" for t in _undefined_terms(state)]
     ctx = state.get("business_context")
     return "\n".join(
         [
             f"<schema>\n{clean(_schema_block(state['schema']))}\n</schema>",
             f"<definitions>\n{chr(10).join(defs) or '(none)'}\n</definitions>",
+            f"<proposed_definitions>\n{chr(10).join(proposed) or '(none)'}\n</proposed_definitions>",
             f"<resolved_values>\n{chr(10).join(resolved) or '(none)'}\n</resolved_values>",
             f"<unverified_values>\n{chr(10).join(unverified) or '(none)'}\n</unverified_values>",
             f"<undefined_terms>\n{chr(10).join(undefined) or '(none)'}\n</undefined_terms>",
