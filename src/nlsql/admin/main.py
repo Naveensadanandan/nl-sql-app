@@ -15,11 +15,12 @@ from typing import Annotated, TypeVar
 
 import anyio
 from elasticsearch import AsyncElasticsearch
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from qdrant_client import AsyncQdrantClient
 
+from nlsql.core import query_store
 from nlsql.core.config import get_settings
 from nlsql.core.tenant import normalize_organisation_id
 from nlsql.worker import indexing
@@ -105,6 +106,28 @@ async def upload_glossary(
     return {"indexed": await indexing.index_glossary(qdrant, org, rows)}
 
 
+@app.get("/admin/queries", dependencies=[Depends(require_key)])
+async def list_saved_queries(
+    organisation_id: str | None = None, limit: Annotated[int, Query(ge=1, le=200)] = 50
+) -> list[dict[str, object]]:
+    """Newest first. Each item's question_id is also the name of its result table."""
+    org = _org(organisation_id) if organisation_id else None
+    return await anyio.to_thread.run_sync(query_store.list_queries, org, limit)
+
+
+@app.get("/admin/queries/{question_id}", dependencies=[Depends(require_key)])
+async def get_saved_query(
+    question_id: str, rows: Annotated[int, Query(ge=1, le=1000)] = 200
+) -> dict[str, object]:
+    """The question, SQL, status, and the saved result rows (`result_columns` + `rows`)."""
+    if not query_store.is_question_id(question_id):
+        raise HTTPException(422, "invalid question_id")
+    found = await anyio.to_thread.run_sync(query_store.get_query, question_id, rows)
+    if found is None:
+        raise HTTPException(404, "unknown question_id")
+    return found
+
+
 class ValuesRequest(BaseModel):
     organisation_id: str
     schema_name: str = Field(description="Postgres schema to read, e.g. ws_acme")
@@ -126,9 +149,9 @@ async def index_values(req: ValuesRequest, request: Request) -> dict[str, object
     es = _client(request.app.state.es, "elasticsearch")
     if not _IDENT.match(req.schema_name) or any(not _IDENT.match(t) for t in req.tables or []):
         raise HTTPException(422, "invalid schema or table name")
-    docs, skipped = await anyio.to_thread.run_sync(
+    docs, skipped, scanned = await anyio.to_thread.run_sync(
         indexing.collect_values, req.schema_name, req.tables, get_settings().value_max_distinct
     )
-    tables = req.tables or sorted({d["table"] for d in docs})
+    tables = req.tables or scanned  # includes tables whose columns were all skipped
     indexed = await indexing.index_values(es, org, docs, tables)
     return {"indexed": indexed, "tables": tables, "skipped_high_cardinality": skipped}

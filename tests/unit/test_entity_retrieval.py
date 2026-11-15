@@ -7,14 +7,12 @@ import pytest
 from qdrant_client import models
 
 from nlsql.agent.graph import graph
-from nlsql.agent.nodes import analyze_ambiguity as amb_module
 from nlsql.agent.nodes import extract_entities as ext_module
 from nlsql.agent.nodes import fetch_schema as schema_module
 from nlsql.agent.nodes import guard as guard_module
 from nlsql.agent.nodes import retrieve_knowledge as rk
 from nlsql.agent.nodes.extract_entities import extract_entities
 from nlsql.agent.schemas import (
-    AmbiguityReport,
     Entity,
     EntityExtraction,
     GlossaryHit,
@@ -165,8 +163,8 @@ async def test_retrieve_glossary_searches_terms_and_dedupes(monkeypatch, setting
 
 def test_graph_runs_schema_fetch_parallel_to_entity_branch():
     edges = {(e.source, e.target) for e in graph.get_graph().edges}
-    assert ("analyze_ambiguity", "fetch_schema") in edges
-    assert ("analyze_ambiguity", "extract_entities") in edges
+    assert ("__start__", "fetch_schema") in edges
+    assert ("__start__", "extract_entities") in edges
     assert ("extract_entities", "resolve_values") in edges
     assert ("extract_entities", "retrieve_glossary") in edges
 
@@ -177,7 +175,6 @@ async def test_graph_end_to_end_with_fakes(monkeypatch):
         "_guard_llm",
         lambda: _Fake(GuardDecision(category="data_question", reason="x")),
     )
-    monkeypatch.setattr(amb_module, "_ambiguity_llm", lambda: _Fake(AmbiguityReport()))
     monkeypatch.setattr(
         ext_module, "_extract_llm", lambda: _Fake(EntityExtraction(entities=_ENTITIES))
     )

@@ -1,23 +1,11 @@
-import os
-from functools import lru_cache
-from pathlib import Path
 from typing import Any, Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openrouter import ChatOpenRouter
 
+from nlsql.agent.prompting import block, load_prompt
 from nlsql.agent.schemas import GuardDecision
 from nlsql.agent.state import AgentState
-from nlsql.core.config import get_settings
-
-_PROMPT = (Path(__file__).parent.parent / "prompts" / "guard.md").read_text(encoding="utf-8")
-
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    pass
+from nlsql.core.llm import fast_llm
 
 _REJECTIONS = {
     "off_topic": (
@@ -35,17 +23,17 @@ _REJECTIONS = {
 }
 
 
-@lru_cache
-def _guard_llm():
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    llm = ChatOpenRouter(model=get_settings().fast_model, temperature=0, api_key=api_key)
-    return llm.with_structured_output(GuardDecision)
+def _guard_llm() -> Any:
+    return fast_llm(GuardDecision)
 
 
 async def guard(state: AgentState) -> dict[str, Any]:
     """Classify the question so the graph can drop anything that is not a data question."""
     decision: GuardDecision = await _guard_llm().ainvoke(
-        [SystemMessage(content=_PROMPT), HumanMessage(content=state["question"])]
+        [
+            SystemMessage(content=load_prompt("guard")),
+            HumanMessage(content=block("question", state["question"])),
+        ]
     )
     return {"guard": decision}
 

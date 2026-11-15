@@ -1,0 +1,4 @@
+{"question": "What is the AOV for last year?", "schema_hint": "orders(order_id, total_amount, order_date)", "undefined_terms": ["AOV"], "expect_feasible": true, "expect_columns": ["orders.total_amount", "orders.order_id"]}
+{"question": "Show profit by month", "schema_hint": "sales(sale_date, revenue, cost)", "undefined_terms": ["profit"], "expect_feasible": true, "expect_columns": ["sales.revenue", "sales.cost"]}
+{"question": "Show profit by month", "schema_hint": "sales(sale_date, revenue)", "undefined_terms": ["profit"], "expect_feasible": false, "expect_columns": []}
+{"question": "Sales on super routes", "schema_hint": "deliveries(route_id, amount)", "undefined_terms": ["super routes"], "expect_feasible": false, "expect_columns": []}

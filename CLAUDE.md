@@ -8,14 +8,18 @@ questions over uploaded CSVs or a connected Postgres database. It returns a SQL 
 and shows how it read the question, using only definitions it can trace to a source.
 
 ## WHAT
-- **Agent**: LangGraph state graph (`src/nlsql/agent/graph.py`) on LangChain, with Claude/open router models models through `langchain-anthropic`/ `ChatOpenRouter`
-- **API**: FastAPI (`src/nlsql/api`), streaming with SSE. **UI**: Streamlit (`ui/`)
+- **Agent**: LangGraph state graph (`src/nlsql/agent/graph.py`) on LangChain. Every LLM call goes
+  through OpenRouter (`ChatOpenRouter`), built only by `core/llm.py` (`fast_llm` / `strong_llm`)
+- **API**: FastAPI (`src/nlsql/api`). `POST /ask` returns a summary and a `question_id`; the
+  frontend reads the full answer (SQL, rows, `interpretation`) from the query store with
+  `GET /questions/{id}`, polling while `rows_status` is `saving`. **UI**: Streamlit (`ui/`)
 - **App DB**: Postgres 16. It holds metadata, the glossary (source of truth), the query log, the LangGraph checkpointer, and the CSV uploads, which go into one `ws_<id>` schema per workspace
 - **Value resolution**: Elasticsearch 8. It indexes distinct values of text columns, normalized for units and synonyms
 - **Knowledge/RAG**: Qdrant. Collections: `glossary`, `schema_docs`, `query_examples`. Embeddings come from fastembed
 - **SQL safety**: `sqlglot` AST validation, read-only transactions, statement timeout, row cap
 - **Evals/observability**: LangSmith for traces, datasets, and evaluators (`evals/`), plus structlog and Prometheus
-- **Background jobs**: arq + Redis for indexing, glossary learning, and eval runs
+- **Background jobs**: v0.1 uses in-process tasks (`core/background.spawn`) for result rows and
+  saved definitions. Planned: a real queue (arq + Redis, or Celery) behind the same call
 
 Layout: `src/nlsql/{api,agent,retrieval,sources,sql,knowledge,suggestions,core,worker}`,
 `evals/`, `tests/{unit,integration}`, `ui/`, `docs/`. The full design is in `docs/system-design.md`,
@@ -24,37 +28,52 @@ and the phased roadmap is in `docs/development-plan.md`.
 ## HOW
 ```bash
 source myenv/Scripts/activate        # PowerShell: myenv\Scripts\Activate.ps1
-pip install -e ".[dev]"              # install app + dev tools
-cp .env.example .env                 # then fill ANTHROPIC_API_KEY, LANGSMITH_API_KEY
+pip install -e ".[dev]"              # install app + dev tools (".[later]" = not-yet-used deps)
+cp .env.example .env                 # then fill NLSQL_OPENROUTER_API_KEY, LANGSMITH_API_KEY
 docker compose up -d                 # postgres, elasticsearch, qdrant, redis
 uvicorn nlsql.api.main:app --reload  # API on :8000
 streamlit run ui/app.py              # UI on :8501
 langgraph dev                        # LangGraph Studio for graph debugging (langgraph.json)
 ```
-Verify every change before calling it done:
-```bash
-ruff check . --fix && ruff format .  # lint + format (style is the linter's job, not this file's)
-mypy src                             # type check
-pytest -m "not integration"          # fast unit tests, no services needed
-pytest -m integration                # needs docker compose up
-python -m evals.run --suite smoke    # LangSmith eval suite; required when prompts/nodes change
-```
+
+No new test suites before version 1. Evals (`evals/datasets/`) run at deployment time, against
+the exact models and prompts being deployed (see docs/v0.1-release-review.md §5.4).
 
 ## Conventions (non-style)
 - **Read-only always**: every generated SQL statement goes through `nlsql.sql.validator` before
   execution. Never run model output directly, and never add write or DDL paths to user databases.
-- **No hallucinated definitions**: business terms come only from glossary hits above the
-  similarity threshold. If a term has no definition, the graph asks the user (`interrupt`)
-  instead of guessing. New terms enter as `proposed` and become `approved` after confirmation.
-- **Postgres is the source of truth** for the glossary and examples. Qdrant and ES are derived
-  indexes and must be rebuildable with `python -m nlsql.worker.reindex`.
-- **Tenant isolation**: every Qdrant query filters on `workspace_id`, ES uses one index per
-  workspace, and CSV data lives in its own `ws_<id>` schema.
+- **Consistent, traceable definitions**: every business term or metric in an answer comes from
+  a source the user can see in `interpretation.definitions`:
+  1. an `approved` glossary entry (above the similarity threshold), else
+  2. a `proposed` glossary entry saved from an earlier question, else
+  3. a new draft from `define_terms`, grounded in real schema columns (any column it cites must
+     exist, or the draft is dropped).
+  After a successful answer, new drafts are saved as `proposed` (`remember_definitions`), so the
+  same term gives the same answer on every later question. Users change a definition by
+  uploading the same name and section (it replaces the draft) and confirm it by setting
+  `approved`. Never overwrite an existing entry with a draft. If the schema can't support a
+  term, the answer asks the user for its definition instead of guessing.
+- **Every answer is explained**: `respond` builds an `Interpretation` (no LLM) with the SQL that
+  ran, the definitions given and used, value matches, unclear terms and the reading chosen,
+  assumptions, and every debug repair. It is stored in `query_log.interpretation`.
+- **Unresolved values** may be matched loosely (`ILIKE`) and must be listed in `assumptions`.
+- **Source of truth**: the target is Postgres for the glossary and examples, with Qdrant and ES
+  as derived indexes rebuildable with `python -m nlsql.worker.reindex`. In v0.1 the glossary
+  lives only in Qdrant (admin CSV upload + saved drafts), so back up the Qdrant collection.
+- **Tenant isolation**: every Qdrant query filters on `organisation_id` (`build_filter`), ES uses
+  one index per organisation. In v0.1, the data tables come from config (`NLSQL_DATA_SCHEMA`,
+  `NLSQL_DATA_TABLES`) and are shared; per-tenant `ws_<id>` schemas are planned.
 - **Nodes** are small functions `(state) -> partial state update`. Prompts live in
-  `src/nlsql/agent/prompts/`, not inline. Use structured output (Pydantic) for every LLM call.
+  `src/nlsql/agent/prompts/` and load through `agent/prompting.load_prompt`. Untrusted text goes
+  into prompts only through `prompting.block` / `prompting.line`. Shared prompt facts live in
+  `agent/grounding.py`; nodes never import each other. Use structured output for every LLM call.
+- **Latency**: nothing slow sits on the response path. The first four nodes start in parallel,
+  schema reflection is cached, and result rows and saved definitions are written in the
+  background. A node that calls `spawn` must be `async`.
 - **Model tiering**: use the fast model for routing, extraction, and suggestions, and the strong model for
   SQL generation and correction. Model IDs come only from `core/config.py`.
-- **Evals ship with features**: a new node or prompt change needs cases added to `evals/datasets/`.
+- **Evals ship with features**: a new node or prompt change needs cases added to `evals/datasets/`
+  (run at deployment, not per commit, until v1).
 - **Secrets**: DB credentials are Fernet-encrypted at rest. Never log connection strings or
   raw result rows. Never read `.env`.
 
