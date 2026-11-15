@@ -67,7 +67,7 @@ def _plan_cost(raw: Any) -> float:
 
 def _run(sql: str) -> QueryResult:
     s = get_settings()
-    with _engine(s.database_url).connect() as conn:
+    with _engine(s.sqlalchemy_url).connect() as conn:
         try:
             # READ ONLY must be the first statement of the transaction.
             conn.exec_driver_sql("SET TRANSACTION READ ONLY", execution_options=_NO_PARAMS)

@@ -1,4 +1,3 @@
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -19,8 +18,8 @@ _NO_CONTEXT = "(none provided)"
 
 @lru_cache
 def _ambiguity_llm():
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    llm = ChatOpenRouter(model=get_settings().fast_model, temperature=0, api_key=api_key)
+    s = get_settings()
+    llm = ChatOpenRouter(model=s.fast_model, temperature=0, api_key=s.openrouter_api_key)
     return llm.with_structured_output(AmbiguityReport)
 
 

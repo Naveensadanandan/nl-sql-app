@@ -5,7 +5,7 @@ from nlsql.core.config import get_settings
 
 
 def get_table_schema(table: str, schema: str = "public") -> "dict":
-    engine = create_engine(get_settings().database_url)
+    engine = create_engine(get_settings().sqlalchemy_url)
     insp = inspect(engine)
     return {
         "table": table,

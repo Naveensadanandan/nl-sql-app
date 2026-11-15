@@ -1,13 +1,32 @@
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _with_driver(url: str, driver: str | None) -> str:
+    """Rewrite a Postgres URL's scheme: driver="psycopg" for SQLAlchemy, None for raw psycopg.
+
+    Accepts postgres://, postgresql:// or postgresql+<driver>:// so .env may use any of them.
+    """
+    scheme, sep, rest = url.partition("://")
+    if not sep:
+        return url
+    base = scheme.split("+", 1)[0]
+    if base == "postgres":
+        base = "postgresql"
+    return f"{base}+{driver}://{rest}" if driver else f"{base}://{rest}"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="NLSQL_", env_file=".env", extra="ignore")
 
+    # LLM (OpenRouter). SecretStr keeps the key out of reprs and logs.
+    openrouter_api_key: SecretStr | None = None
     fast_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
     strong_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+
+    # App DB. Write it as postgresql://...; use the properties below, never this field directly.
     database_url: str
 
     # Value resolution (Elasticsearch, one index per organisation: values_<organisation_id>).
@@ -40,6 +59,21 @@ class Settings(BaseSettings):
     admin_api_key: str | None = None
     value_max_distinct: int = 5000  # a text column with more distinct values is not a category
     admin_max_upload_mb: int = 5
+
+    @property
+    def sqlalchemy_url(self) -> str:
+        """database_url for create_engine (postgresql+psycopg://)."""
+        return _with_driver(self.database_url, "psycopg")
+
+    @property
+    def psycopg_url(self) -> str:
+        """database_url for psycopg.connect (postgresql://)."""
+        return _with_driver(self.database_url, None)
+
+    @property
+    def results_psycopg_url(self) -> str:
+        """Query-store URL for psycopg.connect; falls back to database_url."""
+        return _with_driver(self.results_database_url or self.database_url, None)
 
 
 @lru_cache

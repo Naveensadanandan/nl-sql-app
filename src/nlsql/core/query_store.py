@@ -46,9 +46,7 @@ def _schema() -> str:
 
 
 def _connect() -> psycopg.Connection[Any]:
-    s = get_settings()
-    url = (s.results_database_url or s.database_url).replace("+psycopg", "", 1)
-    return psycopg.connect(url)
+    return psycopg.connect(get_settings().results_psycopg_url)
 
 
 def ensure_store() -> None:

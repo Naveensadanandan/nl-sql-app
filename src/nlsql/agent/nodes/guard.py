@@ -1,4 +1,3 @@
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -11,13 +10,6 @@ from nlsql.agent.state import AgentState
 from nlsql.core.config import get_settings
 
 _PROMPT = (Path(__file__).parent.parent / "prompts" / "guard.md").read_text(encoding="utf-8")
-
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    pass
 
 _REJECTIONS = {
     "off_topic": (
@@ -37,8 +29,8 @@ _REJECTIONS = {
 
 @lru_cache
 def _guard_llm():
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    llm = ChatOpenRouter(model=get_settings().fast_model, temperature=0, api_key=api_key)
+    s = get_settings()
+    llm = ChatOpenRouter(model=s.fast_model, temperature=0, api_key=s.openrouter_api_key)
     return llm.with_structured_output(GuardDecision)
 
 

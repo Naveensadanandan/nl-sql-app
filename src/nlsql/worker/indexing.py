@@ -174,7 +174,7 @@ def _category_columns(
 
 
 def list_tables(schema: str) -> list[str]:
-    with psycopg.connect(get_settings().database_url) as conn, conn.cursor() as cur:
+    with psycopg.connect(get_settings().psycopg_url) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT table_name FROM information_schema.tables "
             "WHERE table_schema = %s AND table_type = 'BASE TABLE' ORDER BY 1",
@@ -193,7 +193,7 @@ def collect_values(
     """
     docs: list[dict[str, Any]] = []
     skipped: list[str] = []
-    with psycopg.connect(get_settings().database_url) as conn:
+    with psycopg.connect(get_settings().psycopg_url) as conn:
         conn.read_only = True
         with conn.cursor() as cur:
             cur.execute("SET LOCAL statement_timeout = '30s'")

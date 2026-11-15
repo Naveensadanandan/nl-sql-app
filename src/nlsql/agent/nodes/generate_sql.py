@@ -3,7 +3,6 @@
 Also holds `grounding_context`, shared with debug_sql so both prompts see the same facts.
 """
 
-import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -11,7 +10,7 @@ from typing import Any, Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openrouter import ChatOpenRouter
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel
 
 from nlsql.agent.schemas import SqlGeneration
 from nlsql.agent.state import AgentState
@@ -33,12 +32,8 @@ def line(text: object) -> str:
 
 @lru_cache
 def strong_llm(output: type[BaseModel]) -> Any:
-    key = os.environ.get("OPENROUTER_API_KEY")
-    llm = ChatOpenRouter(
-        model=get_settings().strong_model,
-        temperature=0,
-        api_key=SecretStr(key) if key else None,
-    )
+    s = get_settings()
+    llm = ChatOpenRouter(model=s.strong_model, temperature=0, api_key=s.openrouter_api_key)
     return llm.with_structured_output(output)
 
 
