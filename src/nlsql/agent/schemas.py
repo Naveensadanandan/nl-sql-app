@@ -81,9 +81,17 @@ class Entity(BaseModel):
 
 
 class EntityExtraction(BaseModel):
-    """Structured output of the extract_entities node."""
+    """Structured output of the extract_entities node: ALL entities found, of any mix of kinds."""
 
-    entities: list[Entity] = Field(default_factory=list)
+    entities: list[Entity] = Field(
+        default_factory=list,
+        description=(
+            "Every phrase in the question that needs a lookup, one item per phrase. A question "
+            "can mix kinds, e.g. 'total revenue for electronic item' gives two items: "
+            "'revenue' (metric) and 'electronic item' (db_value). Do not stop after the first. "
+            "Empty list if nothing needs a lookup."
+        ),
+    )
 
 
 class IndexedItem(BaseModel):
@@ -117,3 +125,42 @@ class GlossaryHit(IndexedItem):
 
     query: str  # the entity text that retrieved this hit
     section: GlossarySection
+
+
+# --- SQL generation + debugging (system-design §5.2) ----------------------------------------
+
+
+class SqlGeneration(BaseModel):
+    """Structured output of the generate_sql node."""
+
+    sql: str | None = Field(
+        default=None,
+        description=(
+            "One read-only PostgreSQL SELECT (or WITH ... SELECT) statement. Null only when "
+            "`missing_definitions` is non-empty."
+        ),
+    )
+    used_terms: list[str] = Field(
+        default_factory=list, description="Names of the provided definitions the SQL applies."
+    )
+    used_values: list[str] = Field(
+        default_factory=list, description="Resolved stored values the SQL filters on, as stored."
+    )
+    assumptions: list[str] = Field(
+        default_factory=list,
+        description="Anything guessed that the user did not state and no definition covers.",
+    )
+    missing_definitions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Business terms from <undefined_terms> that cannot be answered without a definition. "
+            "If any are listed, leave `sql` null."
+        ),
+    )
+
+
+class SqlFix(BaseModel):
+    """Structured output of the debug_sql node."""
+
+    diagnosis: str = Field(description="One or two sentences: what caused the error.")
+    sql: str = Field(description="The corrected single read-only PostgreSQL statement.")

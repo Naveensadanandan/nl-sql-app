@@ -20,4 +20,21 @@ Do NOT return:
 - Dates, numbers, ranges and limits ("2024", "last 30 days", "top 10").
 
 Keep a quantity together with its product ("5l coconut oil", not "5l" and "coconut oil").
+
+A question often holds several entities of different kinds. Return ALL of them in `entities`,
+one item per phrase; never stop after the first.
+
+Strip standard aggregations from a phrase and keep the rest: in "total revenue", "total" is
+ignored and "revenue" is returned. A measure such as revenue, profit or margin is a `metric`
+even when the question also names a product or place, because you cannot see the schema and the
+glossary lookup decides whether it is a plain column.
+
+Examples:
+- "what is my total revenue for electronic item" ->
+  [{text: "revenue", kind: metric}, {text: "electronic item", kind: db_value, column_hint: "category"}]
+- "AOV of best customers in Kerala" ->
+  [{text: "AOV", kind: metric}, {text: "best customers", kind: business_term},
+   {text: "Kerala", kind: db_value, column_hint: "region"}]
+- "sales by region in 2024" -> []
+
 If nothing needs a lookup, return an empty `entities` list.

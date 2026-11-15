@@ -31,14 +31,8 @@ uvicorn nlsql.api.main:app --reload  # API on :8000
 streamlit run ui/app.py              # UI on :8501
 langgraph dev                        # LangGraph Studio for graph debugging (langgraph.json)
 ```
-Verify every change before calling it done:
-```bash
-ruff check . --fix && ruff format .  # lint + format (style is the linter's job, not this file's)
-mypy src                             # type check
-pytest -m "not integration"          # fast unit tests, no services needed
-pytest -m integration                # needs docker compose up
-python -m evals.run --suite smoke    # LangSmith eval suite; required when prompts/nodes change
-```
+
+No testing and evals before version 1
 
 ## Conventions (non-style)
 - **Read-only always**: every generated SQL statement goes through `nlsql.sql.validator` before

@@ -11,6 +11,10 @@
   input, button { font: inherit; padding: .35rem .5rem; }
   input[type=text], input[type=password] { width: 100%; box-sizing: border-box; }
   pre { background: #f4f4f4; padding: .75rem; border-radius: 6px; white-space: pre-wrap; }
+  #grid { overflow-x: auto; }
+  table.grid { border-collapse: collapse; font-size: 13px; }
+  table.grid th, table.grid td { border: 1px solid #ccc; padding: .25rem .5rem; text-align: left; }
+  table.grid tr:hover td { background: rgba(128,128,128,.15); cursor: pointer; }
   @media (prefers-color-scheme: dark) {
     body { background: #1b1b1b; color: #eee; } pre { background: #2a2a2a; }
     fieldset { border-color: #444; } input { background: #2a2a2a; color: #eee; }
@@ -46,6 +50,16 @@
   </p>
 </fieldset>
 
+<fieldset>
+  <legend>Query history (saved SQL + results)</legend>
+  <p><button onclick="listQueries()">List recent queries</button>
+     (uses the Organisation id above; blank = all)</p>
+  <label for="qid">Question id</label>
+  <input id="qid" type="text" placeholder="q_0123abcd…">
+  <p><button onclick="viewQuery($('qid').value)">View result</button></p>
+  <div id="grid"></div>
+</fieldset>
+
 <pre id="out">Ready.</pre>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -58,6 +72,42 @@ async function call(method, url, body) {
       body: body instanceof FormData ? body : body && JSON.stringify(body) });
     $('out').textContent = r.status + ' ' + JSON.stringify(await r.json(), null, 2);
   } catch (e) { $('out').textContent = String(e); }
+}
+// Query results are user data: build the table with textContent, never innerHTML.
+async function getJson(url) {
+  const r = await fetch(url, { headers: { 'X-Admin-Key': $('key').value } });
+  return { status: r.status, body: await r.json() };
+}
+function renderTable(columns, rows, onRowClick) {
+  const g = $('grid'); g.replaceChildren();
+  const t = document.createElement('table'); t.className = 'grid';
+  const head = t.insertRow();
+  columns.forEach(c => { const th = document.createElement('th'); th.textContent = c; head.append(th); });
+  rows.forEach(r => {
+    const tr = t.insertRow();
+    r.forEach(v => { tr.insertCell().textContent = v === null ? '' : String(v); });
+    if (onRowClick) tr.onclick = () => onRowClick(r);
+  });
+  g.append(t);
+}
+async function listQueries() {
+  $('out').textContent = 'Working…';
+  const org = $('org').value.trim();
+  const { status, body } = await getJson('/admin/queries' + (org ? '?organisation_id=' + encodeURIComponent(org) : ''));
+  if (status !== 200) { $('out').textContent = status + ' ' + JSON.stringify(body); return; }
+  renderTable(['question_id', 'status', 'rows', 'question', 'created'],
+    body.map(q => [q.question_id, q.status, q.row_count, q.question, q.created_at]),
+    r => { $('qid').value = r[0]; viewQuery(r[0]); });
+  $('out').textContent = body.length + ' queries. Click a row to open it.';
+}
+async function viewQuery(id) {
+  $('out').textContent = 'Working…';
+  const { status, body } = await getJson('/admin/queries/' + encodeURIComponent(id.trim()));
+  if (status !== 200) { $('out').textContent = status + ' ' + JSON.stringify(body); return; }
+  renderTable(body.result_columns, body.rows);
+  $('out').textContent = 'Question: ' + body.question + '\nStatus: ' + body.status +
+    (body.error ? '\nError: ' + body.error : '') + '\n\nSQL:\n' + (body.sql || '(none)') +
+    (body.truncated ? '\n\n(result was capped; showing saved rows)' : '');
 }
 function uploadCsv() {
   const f = $('csv').files[0];

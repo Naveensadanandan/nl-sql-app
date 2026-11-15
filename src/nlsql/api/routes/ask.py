@@ -27,6 +27,9 @@ class AskRequest(BaseModel):
 
 class AskResponse(BaseModel):
     question: str
+    question_id: str | None = Field(
+        default=None, description="Look this up in the admin server to see the saved SQL and rows."
+    )
     category: GuardCategory
     reason: str
     answer: str | None = None
@@ -51,6 +54,7 @@ async def ask(body: AskRequest) -> AskResponse:
     report = result.get("ambiguity")
     return AskResponse(
         question=body.question,
+        question_id=result.get("question_id"),
         category=decision.category,
         reason=decision.reason,
         answer=result.get("answer"),

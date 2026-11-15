@@ -22,6 +22,19 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-small-en-v1.5"  # fastembed; must match the indexer's model
     glossary_min_score: float = 0.6  # cosine similarity threshold for a glossary hit
 
+    # SQL generation / execution (system-design §7).
+    sql_max_debug_attempts: int = 3  # debug_sql loops before the graph gives up
+    sql_row_cap: int = 1000  # LIMIT clamp and fetch cap
+    sql_timeout_seconds: int = 15  # statement_timeout inside the read-only transaction
+    sql_max_cost: float = 1e7  # EXPLAIN total-cost ceiling; above it the query is rejected
+
+    # Query store (src/nlsql/core/query_store.py): every question is logged to
+    # <results_schema>.query_log and its result rows to <results_schema>.q_<question_id>.
+    # The store WRITES, so point results_database_url at a role that may CREATE in that schema;
+    # unset = reuse database_url. Keep the read-only query role separate from this one.
+    results_schema: str = "query_results"
+    results_database_url: str | None = None
+
     # Admin server (src/nlsql/admin). Every admin request needs the X-Admin-Key header;
     # with no key set the admin API refuses all requests.
     admin_api_key: str | None = None
