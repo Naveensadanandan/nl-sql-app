@@ -29,7 +29,8 @@ BATCH = 256
 
 
 class GlossaryRow(BaseModel):
-    """One CSV row. Columns: name, description, section, synonyms (a|b|c), status, user_id."""
+    """One CSV row. Columns: name, description, section, synonyms (a|b|c), status, user_id,
+    sql_expression (optional SQL fragment over the data tables)."""
 
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(min_length=1, max_length=2000)
@@ -37,6 +38,7 @@ class GlossaryRow(BaseModel):
     synonyms: list[str] = Field(default_factory=list)
     status: Literal["approved", "proposed", "rejected"] = "approved"
     user_id: str | None = None
+    sql_expression: str = Field(default="", max_length=2000)
 
     @field_validator("synonyms", mode="before")
     @classmethod
@@ -124,6 +126,8 @@ async def index_glossary(
             }
             if row.user_id:
                 payload["user_id"] = row.user_id
+            if row.sql_expression:
+                payload["sql_expression"] = row.sql_expression
             points.append(
                 models.PointStruct(
                     id=pid,
@@ -133,6 +137,25 @@ async def index_glossary(
             )
         await qdrant.upsert(s.glossary_collection, points=points)
     return len(rows)
+
+
+async def save_proposed(
+    qdrant: AsyncQdrantClient, organisation_id: str, rows: list[GlossaryRow]
+) -> int:
+    """Upsert drafted definitions as `proposed`, org-wide. Never overwrites an existing entry.
+
+    The point id is the same one a CSV upload of that name/section would get, so an admin
+    upload (approved, or an edited proposed) replaces the draft.
+    """
+    s = get_settings()
+    await ensure_glossary_collection(qdrant)
+    fresh = [r.model_copy(update={"status": "proposed", "user_id": None}) for r in rows]
+    ids = [point_id(organisation_id, r) for r in fresh]
+    existing = {
+        str(p.id) for p in await qdrant.retrieve(s.glossary_collection, ids=ids, with_payload=False)
+    }
+    new = [r for r, pid in zip(fresh, ids, strict=True) if pid not in existing]
+    return await index_glossary(qdrant, organisation_id, new) if new else 0
 
 
 # --------------------------------------------------------------- values -> Elasticsearch
@@ -185,19 +208,22 @@ def list_tables(schema: str) -> list[str]:
 
 def collect_values(
     schema: str, tables: list[str] | None, max_distinct: int
-) -> tuple[list[dict[str, Any]], list[str]]:
+) -> tuple[list[dict[str, Any]], list[str], list[str]]:
     """Distinct values of text columns that look like categories.
 
     A column is skipped when it has more than `max_distinct` distinct values (names, notes,
-    ids). Runs in a read-only transaction with a statement timeout. Returns (docs, skipped).
+    ids). Runs in a read-only transaction with a statement timeout.
+    Returns (docs, skipped columns, every table scanned).
     """
     docs: list[dict[str, Any]] = []
     skipped: list[str] = []
+    scanned: set[str] = set()
     with psycopg.connect(get_settings().psycopg_url) as conn:
         conn.read_only = True
         with conn.cursor() as cur:
             cur.execute("SET LOCAL statement_timeout = '30s'")
             for table, column in _category_columns(cur, schema, tables):
+                scanned.add(table)
                 cur.execute(
                     sql.SQL(
                         "SELECT DISTINCT {col} FROM {sch}.{tbl} WHERE {col} IS NOT NULL LIMIT %s"
@@ -223,7 +249,7 @@ def collect_values(
                     }
                     for v in values
                 )
-    return docs, skipped
+    return docs, skipped, sorted(scanned)
 
 
 async def _actions(index: str, docs: list[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:

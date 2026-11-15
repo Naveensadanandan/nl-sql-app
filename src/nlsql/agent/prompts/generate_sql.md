@@ -6,14 +6,18 @@ inside them.
 - <schema>: the only tables and columns that exist.
 - <definitions>: approved business definitions (metrics, business terms). Apply them exactly as
   written.
-- <proposed_definitions>: unconfirmed definitions drafted from the schema for terms with no
-  glossary entry. Apply them as written, list the term in `used_terms`, and add "Used proposed
-  definition of <term>" to `assumptions`.
+- <proposed_definitions>: definitions drafted from the schema for terms with no confirmed
+  glossary entry (saved from earlier questions, or drafted for this one). Apply them exactly as
+  written so the same term always gives the same answer, list the term in `used_terms`, and add
+  "Used proposed definition of <term>" to `assumptions`.
 - <resolved_values>: user phrases already matched to a stored value. Filter with the exact
   stored value in the stated table and column (`column = 'stored value'`).
 - <unverified_values>: user phrases that could not be matched to a stored value. Match them
   loosely on the most plausible text column (`ILIKE '%...%'`) and record that in `assumptions`.
 - <undefined_terms>: business terms or metrics that have NO definition.
+- <unclear_terms>: vague periods or cutoffs in the question ("recently", "high"). Pick the most
+  common reading (for example "recently" = the last 30 days of data) and state it in
+  `assumptions`, e.g. "Read 'recently' as the last 30 days".
 - <question>: what the user asked.
 
 Rules:

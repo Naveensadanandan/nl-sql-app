@@ -149,9 +149,9 @@ async def index_values(req: ValuesRequest, request: Request) -> dict[str, object
     es = _client(request.app.state.es, "elasticsearch")
     if not _IDENT.match(req.schema_name) or any(not _IDENT.match(t) for t in req.tables or []):
         raise HTTPException(422, "invalid schema or table name")
-    docs, skipped = await anyio.to_thread.run_sync(
+    docs, skipped, scanned = await anyio.to_thread.run_sync(
         indexing.collect_values, req.schema_name, req.tables, get_settings().value_max_distinct
     )
-    tables = req.tables or sorted({d["table"] for d in docs})
+    tables = req.tables or scanned  # includes tables whose columns were all skipped
     indexed = await indexing.index_values(es, org, docs, tables)
     return {"indexed": indexed, "tables": tables, "skipped_high_cardinality": skipped}

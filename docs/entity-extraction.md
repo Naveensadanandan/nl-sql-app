@@ -1,7 +1,10 @@
 # Entity extraction, value resolution and business definitions
 
-Status: first cut. Elasticsearch and Qdrant are **not** running yet. The new nodes are wired
-into the graph and skip their lookups until those servers are configured.
+Status: updated for v0.1. ES and Qdrant run in docker compose, and the admin server
+(`nlsql.admin.main`) fills them (glossary CSV → Qdrant, category values → ES). The lookups still
+skip cleanly when a URL or `organisation_id` is missing. For the current end-to-end graph
+(parallel start, `gather`, saved proposed definitions) see `src/nlsql/agent/graph.py` and
+`docs/v0.1-changes.md`. The graph sketch below shows only the entity branch.
 
 Design references: `docs/system-design.md` §4.1 (value resolution), §4.2 (glossary), §5.2 (graph).
 
@@ -18,9 +21,10 @@ guard ─▶ analyze_ambiguity ─┬─▶ fetch_schema ───────�
 - `fetch_schema` runs **in parallel** with the entity branch, in the same LangGraph superstep.
 - `resolve_values` and `retrieve_glossary` run in parallel after `extract_entities`.
 - Each branch writes its own state key, so no reducer is needed.
-- When `generate_sql` exists, replace the three `-> END` edges with a join:
-  `builder.add_edge(["fetch_schema", "resolve_values", "retrieve_glossary"], "generate_sql")`.
-- `ambiguity_graph` (behind `POST /analyze-ambiguity`) is unchanged.
+- In v0.1 all branches (plus `guard`) join in `gather`, which routes to `reject` or
+  `define_terms` → `generate_sql`. `analyze_ambiguity` was removed: `extract_entities` also
+  returns `time_period` / `vague_quantifier` entities, which skip the lookups and reach
+  `generate_sql` as `<unclear_terms>`.
 
 ### New nodes
 
@@ -113,10 +117,12 @@ ES value documents and Qdrant glossary points share one base shape (`IndexedItem
 - `section` is `metric` or `business_definition`.
 - `user_id` is optional. Leave it out for an entry shared with the whole organisation, and set it for a private entry.
 - Filter (`build_filter`). Every query goes through it, so callers can't forget it:
-  - **must**: `organisation_id == <org>`, `section in [metric, business_definition]`, `status == approved`.
+  - **must**: `organisation_id == <org>`, `section in [metric, business_definition]`, `status in [approved, proposed]`.
   - **visibility**: with a `user_id`, return entries that have no `user_id` **or** belong to that user.
     Without one, return shared entries only.
-- Search: simple dense `query_points` with `score_threshold = glossary_min_score`, top 3 per term.
+- Search: dense `query_batch_points` (all terms in one call) with `score_threshold =
+  glossary_min_score`, top 3 per term. `approved` and `proposed` entries are returned; when a
+  term has an approved hit, its proposed hits are dropped.
   When several terms match the same entry, `retrieve_glossary` keeps that entry's best score.
 - Create payload indexes on `organisation_id`, `section`, `status` and `user_id` when you create the collection.
 - Postgres stays the source of truth (`glossary_terms`). This collection is a rebuildable index.
@@ -135,8 +141,8 @@ All settings use the `NLSQL_` prefix and live in `core/config.py`.
 | `NLSQL_EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Needs `qdrant-client[fastembed]` |
 | `NLSQL_GLOSSARY_MIN_SCORE` | `0.6` | Cosine similarity floor |
 
-`.env.example` already lists `NLSQL_ES_URL` and `NLSQL_QDRANT_URL`. The elasticsearch and qdrant
-services in `docker-compose.yml` are still commented out. Uncomment them to bring the servers up.
+`.env.example` lists `NLSQL_ES_URL` and `NLSQL_QDRANT_URL`, which match the elasticsearch and
+qdrant services in `docker-compose.yml`.
 
 ## Trying it
 
@@ -151,7 +157,7 @@ Without ES or Qdrant you'll still see `entities`, `resolved_values` with status 
 
 ## Known gaps / next steps
 
-1. **Indexer**: nothing writes to ES or Qdrant yet. `python -m nlsql.worker.reindex` should:
+1. **Indexer**: the admin server writes to ES and Qdrant; a rebuild command doesn't exist yet. `python -m nlsql.worker.reindex` should:
    - build `values_<org>` from distinct text-column values;
    - mirror approved `glossary_terms` from Postgres into Qdrant.
 2. **Unit normalisation** (§4.1): parse `5l` = `5000 ml` with `pint` at index and query time.

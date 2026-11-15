@@ -9,14 +9,12 @@ import asyncio
 import json
 import re
 from datetime import date, datetime, time
-from decimal import Decimal
-from functools import lru_cache
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import Engine, create_engine
 
 from nlsql.core.config import get_settings
+from nlsql.core.db import engine
 
 _NO_PARAMS = {
     "no_parameters": True
@@ -34,14 +32,8 @@ class SqlExecutionError(Exception):
     """Database or cost-guard failure; the message is safe to show to the debugger."""
 
 
-@lru_cache
-def _engine(url: str) -> Engine:
-    return create_engine(url, pool_pre_ping=True)
-
-
 def _json_safe(value: Any) -> Any:
-    if isinstance(value, Decimal):
-        return float(value)
+    # Decimal stays Decimal (exact money values); the query store saves it as numeric.
     if isinstance(value, datetime | date | time):
         return value.isoformat()
     if isinstance(value, bytes | memoryview):
@@ -67,7 +59,7 @@ def _plan_cost(raw: Any) -> float:
 
 def _run(sql: str) -> QueryResult:
     s = get_settings()
-    with _engine(s.sqlalchemy_url).connect() as conn:
+    with engine(s.sqlalchemy_url).connect() as conn:
         try:
             # READ ONLY must be the first statement of the transaction.
             conn.exec_driver_sql("SET TRANSACTION READ ONLY", execution_options=_NO_PARAMS)

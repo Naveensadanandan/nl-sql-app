@@ -16,10 +16,12 @@ from nlsql.sql.validator import allowed_from_schema, validate
 
 
 def validate_sql(state: AgentState) -> dict[str, Any]:
+    s = get_settings()
     result = validate(
         state["sql"],
         allowed_from_schema(state["schema"]),
-        row_cap=get_settings().sql_row_cap,
+        row_cap=s.sql_row_cap,
+        schema_name=s.data_schema,
     )
     if result.ok:
         return {"sql": result.sql, "sql_error": None}

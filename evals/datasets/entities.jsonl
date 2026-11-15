@@ -7,3 +7,6 @@
 {"question": "Churn rate of active users using coco oil 1 ltr", "expected_entities": [{"text": "churn rate", "kind": "metric"}, {"text": "active users", "kind": "business_term"}, {"text": "coco oil 1 ltr", "kind": "db_value"}]}
 {"question": "what is my total revenue for electronic item", "expected_entities": [{"text": "revenue", "kind": "metric"}, {"text": "electronic item", "kind": "db_value"}]}
 {"question": "AOV of best customers in Kerala", "expected_entities": [{"text": "AOV", "kind": "metric"}, {"text": "best customers", "kind": "business_term"}, {"text": "Kerala", "kind": "db_value"}]}
+{"question": "What was our profit recently?", "expected_entities": [{"text": "profit", "kind": "metric"}, {"text": "recently", "kind": "time_period"}]}
+{"question": "Which products are selling high?", "expected_entities": [{"text": "high", "kind": "vague_quantifier"}]}
+{"question": "Show sales on super routes last season", "expected_entities": [{"text": "super routes", "kind": "business_term"}, {"text": "last season", "kind": "time_period"}]}

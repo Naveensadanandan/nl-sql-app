@@ -39,7 +39,7 @@ Build in order: every phase depends on the eval harness from Phase 0/1.
 - **Exit:** zero unsourced-definition violations. ≥ 85% correct usage of defined terms.
 
 ## Phase 4: Suggestions and clarification (week 6) · F4, F5
-- [ ] `analyze_ambiguity` node + `ambiguous_question` interrupt with 2–4 rewrites
+- [ ] Vague-question rewrites: `ambiguous_question` interrupt with 2–4 rewrites (v0.1 detects vague periods/cutoffs in `extract_entities` and states a reading; the separate `analyze_ambiguity` node was removed as redundant)
 - [ ] `query_examples` bank (fed by thumbs-up). `suggest_questions` node with an executability check
 - [ ] Starter questions for a new workspace. Clickable suggestion chips in the UI
 - [ ] `ambiguity` + `suggestions` eval suites. Multi-turn follow-ups via the checkpointer

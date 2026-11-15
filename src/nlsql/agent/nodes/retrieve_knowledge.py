@@ -1,11 +1,11 @@
 """Lookup nodes that run in parallel after extract_entities (no LLM).
 
 - resolve_values:    db_value entities -> exact stored values via Elasticsearch
-- retrieve_glossary: business_term / metric entities -> approved definitions via Qdrant
+- retrieve_glossary: business_term / metric entities -> approved or proposed definitions (Qdrant)
 
 Both are safe to run before the servers exist: if the URL setting or organisation_id is
-missing they return "nothing found" results instead of failing, and the downstream
-clarify step (not built yet) asks the user. Lookups for several entities run concurrently.
+missing they return "nothing found" results instead of failing. Value lookups run
+concurrently; glossary lookups go to Qdrant as one batch (one embedding pass, one round trip).
 """
 
 import asyncio
@@ -14,7 +14,7 @@ from typing import Any
 from nlsql.agent.schemas import ValueMatch
 from nlsql.agent.state import AgentState
 from nlsql.core.config import get_settings
-from nlsql.retrieval.glossary_search import search_glossary
+from nlsql.retrieval.glossary_search import search_glossary_batch
 from nlsql.retrieval.value_search import decide, search_values
 
 
@@ -34,8 +34,14 @@ async def retrieve_glossary(state: AgentState) -> dict[str, Any]:
     org = state.get("organisation_id")
     if not terms or not get_settings().qdrant_url or not org:
         return {"glossary_hits": []}
-    user = state.get("user_id")
-    results = await asyncio.gather(*(search_glossary(t.text, org, user) for t in terms))
+    results = await search_glossary_batch([t.text for t in terms], org, state.get("user_id"))
+    # A confirmed definition wins: drop proposed hits for a term that also has an approved one.
+    results = [
+        [h for h in hits if h.status == "approved"]
+        if any(h.status == "approved" for h in hits)
+        else hits
+        for hits in results
+    ]
     # Same entry can match several terms; keep its best-scoring hit.
     best: dict[str, Any] = {}
     for hit in (h for hits in results for h in hits):

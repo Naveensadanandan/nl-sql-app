@@ -3,7 +3,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 GuardCategory = Literal["data_question", "off_topic", "unsafe", "unclear"]
-TermKind = Literal["business_term", "metric", "time_period", "vague_quantifier"]
 
 
 class GuardDecision(BaseModel):
@@ -20,44 +19,10 @@ class GuardDecision(BaseModel):
     reason: str = Field(description="One short sentence explaining the category.")
 
 
-class TermToDefine(BaseModel):
-    """A phrase in the question that needs a precise definition before SQL can be written."""
-
-    term: str = Field(description="The phrase exactly as the user wrote it.")
-    kind: TermKind = Field(
-        description=(
-            "business_term: domain jargon or a coined label ('best customers', 'super routes'). "
-            "metric: a measure whose formula is not obvious ('profit', 'growth'). "
-            "time_period: a vague period ('recently', 'last season'). "
-            "vague_quantifier: an unspecified cutoff ('top', 'high', 'many')."
-        )
-    )
-    why: str = Field(description="One short sentence on why SQL cannot be written without it.")
-    question_to_user: str = Field(
-        description="A short, concrete question to ask the user to get the definition."
-    )
-
-
-class AmbiguityReport(BaseModel):
-    """Structured output of the analyze_ambiguity node."""
-
-    terms: list[TermToDefine] = Field(
-        default_factory=list,
-        description="Terms that need a definition. Empty when the question is fully specified.",
-    )
-    defined_by_context: list[str] = Field(
-        default_factory=list,
-        description="Terms in the question that the business description already defines.",
-    )
-
-    @property
-    def is_ambiguous(self) -> bool:
-        return bool(self.terms)
-
-
 # --- Entity extraction + retrieval (system-design §4.1, §4.2, §5.2) -------------------------
 
-EntityKind = Literal["db_value", "business_term", "metric"]
+EntityKind = Literal["db_value", "business_term", "metric", "time_period", "vague_quantifier"]
+VAGUE_KINDS = ("time_period", "vague_quantifier")  # no lookup; generate_sql states a reading
 GlossarySection = Literal["metric", "business_definition"]
 MatchStatus = Literal["resolved", "ambiguous", "not_found", "skipped"]
 
@@ -71,7 +36,9 @@ class Entity(BaseModel):
             "db_value: a literal that should match a stored value in a text column "
             "('5l coconut oil', 'Kerala', 'Acme Ltd'). "
             "business_term: domain jargon or a coined label ('best customers', 'super routes'). "
-            "metric: a named measure whose formula lives in the glossary ('profit', 'AOV')."
+            "metric: a named measure whose formula lives in the glossary ('profit', 'AOV'). "
+            "time_period: a vague period with no explicit dates ('recently', 'last season'). "
+            "vague_quantifier: a cutoff with no number ('high', 'many', 'top' without a count)."
         )
     )
     column_hint: str | None = Field(
@@ -86,7 +53,8 @@ class EntityExtraction(BaseModel):
     entities: list[Entity] = Field(
         default_factory=list,
         description=(
-            "Every phrase in the question that needs a lookup, one item per phrase. A question "
+            "Every phrase in the question that needs a lookup or a stated reading, one item per "
+            "phrase. A question "
             "can mix kinds, e.g. 'total revenue for electronic item' gives two items: "
             "'revenue' (metric) and 'electronic item' (db_value). Do not stop after the first. "
             "Empty list if nothing needs a lookup."
@@ -125,6 +93,10 @@ class GlossaryHit(IndexedItem):
 
     query: str  # the entity text that retrieved this hit
     section: GlossarySection
+    # approved = confirmed by a user/admin. proposed = drafted by define_terms on an earlier
+    # question and saved so every later question uses the same reading until a user edits it.
+    status: Literal["approved", "proposed"] = "approved"
+    sql_expression: str = ""  # set for drafted definitions; optional for uploaded ones
 
 
 # --- SQL generation + debugging (system-design §5.2) ----------------------------------------
@@ -175,7 +147,9 @@ class ProposedDefinition(BaseModel):
     )
     sql_expression: str = Field(
         default="",
-        description="A SQL fragment (expression or predicate) over schema columns. Empty if infeasible.",
+        description=(
+            "A SQL fragment (expression or predicate) over schema columns. Empty if infeasible."
+        ),
     )
     columns_used: list[str] = Field(
         default_factory=list,
@@ -198,3 +172,65 @@ class SqlFix(BaseModel):
 
     diagnosis: str = Field(description="One or two sentences: what caused the error.")
     sql: str = Field(description="The corrected single read-only PostgreSQL statement.")
+    assumptions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The complete assumptions list for the corrected query (carry over the earlier ones "
+            "that still hold, add any new guess the fix introduced)."
+        ),
+    )
+
+
+# --- Interpretation: how the question was read (stored in query_log, shown by the frontend) --
+
+Outcome = Literal["success", "needs_definition", "no_sql", "failed", "rejected"]
+
+
+class DefinitionUse(BaseModel):
+    """One definition the SQL writer was given, and whether it applied it."""
+
+    term: str
+    definition: str
+    sql_expression: str = ""
+    status: Literal["approved", "proposed"]
+    origin: Literal["glossary", "drafted_now"]  # drafted_now = define_terms on this question
+    used: bool  # listed in the generator's used_terms
+    score: float | None = None  # glossary similarity
+    glossary_id: str | None = None
+
+
+class ValueMapping(BaseModel):
+    """How a phrase from the question was matched to a stored value."""
+
+    phrase: str
+    status: MatchStatus
+    table: str | None = None
+    column: str | None = None
+    value: str | None = None  # the stored literal used in SQL (resolved only)
+    alternatives: list[str] = Field(default_factory=list)  # "table.column = 'value'"
+
+
+class Repair(BaseModel):
+    """One debug_sql round: the SQL that failed, why, and the model's diagnosis."""
+
+    sql: str
+    error: str
+    diagnosis: str = ""
+
+
+class Interpretation(BaseModel):
+    """Deterministic (no LLM) record of how the question was answered. Built by respond."""
+
+    outcome: Outcome
+    sql: str | None = None
+    definitions: list[DefinitionUse] = Field(default_factory=list)
+    values: list[ValueMapping] = Field(default_factory=list)
+    unclear_terms: list[str] = Field(default_factory=list)  # vague periods/cutoffs given a reading
+    assumptions: list[str] = Field(default_factory=list)
+    missing_definitions: list[str] = Field(default_factory=list)
+    repairs: list[Repair] = Field(default_factory=list)
+    # used_terms the generator claimed but that match no definition it was given. Should stay
+    # empty; anything here is a grounding violation worth reviewing.
+    ungrounded_terms: list[str] = Field(default_factory=list)
+    row_count: int = 0
+    truncated: bool = False

@@ -19,10 +19,13 @@ _FORBIDDEN_NODE_NAMES = (
 )  # fmt: skip
 _FORBIDDEN_NODES = tuple(getattr(exp, n) for n in _FORBIDDEN_NODE_NAMES if hasattr(exp, n))
 
-_BLOCKED_FUNC_PREFIXES = ("pg_", "dblink", "lo_")
+_BLOCKED_FUNC_PREFIXES = ("pg_", "dblink", "lo_", "has_", "inet_", "txid_")
 _BLOCKED_FUNCS = {
-    "set_config", "current_setting", "txid_current", "query_to_xml", "table_to_xml",
+    "set_config", "current_setting", "query_to_xml", "table_to_xml",
     "database_to_xml", "schema_to_xml", "cursor_to_xml",
+    # server / session introspection: harmless to data, but leaks environment details
+    "version", "current_version", "current_user", "session_user", "current_role",
+    "current_database", "current_catalog", "current_schema", "current_schemas",
 }  # fmt: skip
 
 
@@ -34,7 +37,10 @@ class ValidationResult:
 
 
 def allowed_from_schema(schema: Any) -> dict[str, set[str]]:
-    """Build {table: {columns}} (table lower-cased, column names as stored) from the fetch_schema output (dict or list of dicts)."""
+    """{table: {columns}} from fetch_schema output (a dict or list of dicts).
+
+    Table names are lower-cased; column names are kept as stored.
+    """
     items = schema if isinstance(schema, list) else [schema]
     return {
         t["table"].lower(): {c["name"] for c in t.get("columns", [])}

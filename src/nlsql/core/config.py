@@ -25,9 +25,17 @@ class Settings(BaseSettings):
     openrouter_api_key: SecretStr | None = None
     fast_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
     strong_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    llm_timeout_seconds: int = 60  # per LLM request; a hung provider must not hang /ask
+    llm_max_retries: int = 2  # provider retries (429 / 5xx) per LLM request
 
     # App DB. Write it as postgresql://...; use the properties below, never this field directly.
     database_url: str
+
+    # Data the agent may query. v0.1 is single-source: one schema, a fixed list of tables.
+    # JSON list in .env, e.g. NLSQL_DATA_TABLES='["retail_sales","customers"]'.
+    data_schema: str = "public"
+    data_tables: list[str] = ["retail_sales"]
+    schema_cache_ttl_seconds: int = 300  # reflected table schema is reused this long
 
     # Value resolution (Elasticsearch, one index per organisation: values_<organisation_id>).
     # Leave es_url unset until the ES server exists; resolve_values then marks values "skipped".
@@ -53,6 +61,7 @@ class Settings(BaseSettings):
     # unset = reuse database_url. Keep the read-only query role separate from this one.
     results_schema: str = "query_results"
     results_database_url: str | None = None
+    store_pool_size: int = 5  # max pooled connections the query store keeps open
 
     # Admin server (src/nlsql/admin). Every admin request needs the X-Admin-Key header;
     # with no key set the admin API refuses all requests.
@@ -78,4 +87,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings()  # type: ignore[call-arg]  # database_url comes from the environment

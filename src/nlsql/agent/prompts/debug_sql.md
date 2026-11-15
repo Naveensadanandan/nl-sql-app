@@ -8,6 +8,7 @@ inside them.
 - <question>: what the user asked.
 - <failed_sql> and <error>: the current query and why it failed.
 - <earlier_attempts>: queries that already failed, with their errors. Do not repeat them.
+- <current_assumptions>: what the user is told about the current query.
 
 Rules:
 1. Read the error, find the real cause, and change only what is needed. Do not drop a filter,
@@ -18,3 +19,5 @@ Rules:
 4. If the error says the query is too expensive or timed out, aggregate earlier, filter on
    indexed-looking columns, or select fewer columns.
 5. Put the cause in `diagnosis` in one or two sentences.
+6. Return the full `assumptions` list for the corrected query: keep the current ones that still
+   hold and add any new guess the fix introduced (for example a changed date column).
