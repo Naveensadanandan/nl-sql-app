@@ -13,12 +13,13 @@ Build in order: every phase depends on the eval harness from Phase 0/1.
 - **Exit:** a CI-green skeleton, and a trace visible in LangSmith.
 
 ## Phase 1: Core NL→SQL (weeks 2–3) · F1
-- [ ] `sources/`: CSV upload → `ws_<id>` schema. Register a Postgres DSN (encrypted) + read-only check
+- [x] `sources/`: CSV upload → `ws_<id>` schema. Register a Postgres DSN (encrypted) + read-only check
 - [ ] `sources/introspect.py` + column profiling + LLM descriptions. `schema_docs` indexed in Qdrant
 - [ ] `sql/validator.py` (sqlglot allowlist, LIMIT, EXPLAIN guard) **with exhaustive unit tests first**
 - [ ] `sql/executor.py`: read-only transaction, timeout, row cap
 - [ ] Graph v1: route → retrieve_schema → generate → validate → execute → correct loop → respond
 - [ ] FastAPI `/sources`, `/chat` (SSE). Streamlit UI showing table + SQL + upload page
+  (done: `/auth`, `/sources`, Streamlit login + ask + upload/connect UI; pending: `/chat` SSE)
 - [ ] Two demo datasets (retail sales CSV, Northwind-style PG). Build `nl2sql_core` (150 Qs) + `smoke` eval suites and `evals/run.py`
 - **Exit:** ≥ 70% execution accuracy on `nl2sql_core`. Zero validator bypasses in the adversarial tests.
 
@@ -49,6 +50,7 @@ Build in order: every phase depends on the eval harness from Phase 0/1.
 - [ ] Semantic cache + result cache. Model tiering tuned with the cost/latency dashboard
 - [ ] Prometheus metrics, structlog, alerts. LangSmith online evaluators + annotation queue
 - [ ] Security pass: prompt-injection test set, PII column tagging, rate limits, API-key auth
+  (user/password login with hashed session tokens is in: docs/ui-and-auth.md)
 - [ ] Eval gate in CI (smoke + `nl2sql_core` regression ≤ 2 pts)
 - [ ] Load test (locust): 20 concurrent users, p95 < 10s
 - [ ] Deploy compose stack to a VM with TLS. Backup/restore runbook for Postgres + Qdrant snapshots

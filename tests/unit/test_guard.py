@@ -43,7 +43,7 @@ class _FakeExtract:
 async def test_graph_filters(monkeypatch, category, expects_answer):
     monkeypatch.setattr(guard_module, "_guard_llm", lambda: _FakeLLM(category))
     monkeypatch.setattr(ext_module, "_extract_llm", lambda: _FakeExtract())
-    monkeypatch.setattr(schema_module, "get_table_schema", lambda table: {"table": table})
+    monkeypatch.setattr(schema_module, "get_table_schema", lambda table, *a, **k: {"table": table})
     result = await graph.ainvoke({"question": "anything"})
     assert result["guard"].category == category
     assert ("answer" in result) is expects_answer

@@ -20,6 +20,10 @@ _FORBIDDEN_NODE_NAMES = (
 _FORBIDDEN_NODES = tuple(getattr(exp, n) for n in _FORBIDDEN_NODE_NAMES if hasattr(exp, n))
 
 _BLOCKED_FUNC_PREFIXES = ("pg_", "dblink", "lo_", "has_", "inet_", "txid_")
+# Functions that run SQL given as a string (the text inside is never validated), or dump whole
+# tables / schemas / the database: ts_stat('SELECT ...'), query_to_xml_and_xmlschema(...),
+# table_to_xml(regclass, ...), database_to_xml(...), and every other *xml* variant.
+_BLOCKED_FUNC_SUBSTRINGS = ("xml", "ts_stat", "ts_rewrite")
 _BLOCKED_FUNCS = {
     "set_config", "current_setting", "query_to_xml", "table_to_xml",
     "database_to_xml", "schema_to_xml", "cursor_to_xml",
@@ -81,7 +85,11 @@ def validate(
 
     for f in tree.find_all(exp.Func):
         name = _func_name(f)
-        if name in _BLOCKED_FUNCS or name.startswith(_BLOCKED_FUNC_PREFIXES):
+        if (
+            name in _BLOCKED_FUNCS
+            or name.startswith(_BLOCKED_FUNC_PREFIXES)
+            or any(s in name for s in _BLOCKED_FUNC_SUBSTRINGS)
+        ):
             return fail(f"Function not allowed: {name}.")
 
     # Table allowlist. CTE names are legal table references inside the same query.
