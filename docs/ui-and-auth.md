@@ -262,7 +262,7 @@ Interactive docs: http://localhost:8000/docs (use **Authorize** and paste the to
   data, or set `NLSQL_SHARED_DATA_ENABLED=false`.
 - Serve the UI and the API over HTTPS.
 
-### Known v0.1 limits
+### Known v0.1 limits 
 
 - Glossary definitions belong to the organisation, not to one source. A definition saved while
   asking about one source can come up for another source that has similar terms.

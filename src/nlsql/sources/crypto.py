@@ -29,11 +29,16 @@ def _fernet() -> Fernet:
 
 
 def available() -> bool:
+    return unavailable_reason() is None
+
+
+def unavailable_reason() -> str | None:
+    """Why connections are off ("... not set" / "... not a valid Fernet key"), else None."""
     try:
         _fernet()
-    except CryptoUnavailable:
-        return False
-    return True
+    except CryptoUnavailable as e:
+        return str(e)
+    return None
 
 
 def encrypt(plain: str) -> str:

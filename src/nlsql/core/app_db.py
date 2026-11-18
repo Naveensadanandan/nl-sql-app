@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from typing import Any
 
-from psycopg import Connection, sql
+from psycopg import Connection, errors, sql
 from psycopg_pool import ConnectionPool
 
 from nlsql.core.config import get_settings
@@ -115,6 +115,13 @@ def ensure_tables() -> None:
 @contextmanager
 def connection() -> Iterator[Connection[Any]]:
     """A pooled connection; the block runs in one transaction (commit on success)."""
+    global _ready
     ensure_tables()
     with _pool().connection() as conn:
-        yield conn
+        try:
+            yield conn
+        except (errors.UndefinedTable, errors.InvalidSchemaName):
+            # The schema was dropped while this process ran (e.g. a DB reset). Forget the
+            # cached "ready" so the next call recreates it instead of failing until restart.
+            _ready = False
+            raise

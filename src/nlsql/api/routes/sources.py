@@ -41,6 +41,7 @@ async def list_sources(user: CurrentUser) -> dict[str, object]:
         "sources": [_public(s) for s in sources],
         "shared_data_enabled": get_settings().shared_data_enabled,
         "postgres_enabled": crypto.available(),
+        "postgres_disabled_reason": crypto.unavailable_reason(),
         "read_only_help": READ_ONLY_HELP,
     }
 

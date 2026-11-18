@@ -149,7 +149,16 @@ def sidebar() -> list[dict[str, Any]]:
             pg_tab, csv_tab = st.tabs(["Connect Postgres", "Upload CSV"])
             with pg_tab:
                 if not info["postgres_enabled"]:
-                    st.warning("Disabled on this server: NLSQL_FERNET_KEY is not set.")
+                    reason = info.get("postgres_disabled_reason") or "NLSQL_FERNET_KEY is not set"
+                    st.error(
+                        f"Database connections are turned off on the API server: {reason}. "
+                        "Add a key to .env and restart the API (see docs/ui-and-auth.md)."
+                    )
+                    st.code(
+                        'python -c "from cryptography.fernet import Fernet; '
+                        'print(Fernet.generate_key().decode())"',
+                        language="bash",
+                    )
                 st.caption(info["read_only_help"])
                 with st.popover("Show the GRANT script"):
                     st.code(GRANT_SQL, language="sql")
