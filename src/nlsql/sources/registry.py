@@ -190,6 +190,15 @@ def _build(row: dict[str, Any]) -> Target:
     )
 
 
+def knowledge_organisation(source_id: str | None, organisation_id: str | None) -> str | None:
+    """Organisation whose glossary and value index serve this question.
+
+    The shared demo data has its own knowledge (settings.demo_organisation_id), seeded at API
+    start; a user's own source uses the user's organisation.
+    """
+    return get_settings().demo_organisation_id if not source_id else organisation_id
+
+
 def target_for(source_id: str | None, organisation_id: str | None) -> Target:
     """Where to run this question. Raises SourceError / SourceNotFound when it cannot run."""
     if not source_id:

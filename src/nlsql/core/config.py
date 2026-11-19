@@ -1,6 +1,7 @@
+import re
 from functools import lru_cache
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -83,6 +84,18 @@ class Settings(BaseSettings):
     # Questions without a data source use the configured data_schema / data_tables, shared by
     # every user (demo data). Set false so each user must connect or upload their own data.
     shared_data_enabled: bool = True
+    # Knowledge (Qdrant glossary + ES values) for questions on the shared demo data lives under
+    # this reserved organisation, not the asker's, so every user's demo sees the same terms and
+    # their own glossary never leaks into it. Seeded at API start (nlsql.knowledge.demo).
+    demo_organisation_id: str = "demo_organisation"
+
+    @field_validator("demo_organisation_id")
+    @classmethod
+    def _demo_org(cls, v: str) -> str:
+        v = v.strip().lower()  # same rule as a new organisation (core.accounts.NEW_ORGANISATION)
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_]{1,39}", v):
+            raise ValueError("demo_organisation_id: 2-40 chars of a-z, 0-9, '_'")
+        return v
 
     @property
     def sqlalchemy_url(self) -> str:

@@ -84,6 +84,8 @@ def create_user(username: str, password: str, organisation_id: str) -> User:
         raise AccountError("username: 3-40 chars of a-z, 0-9, '_', '.', '-'")
     if not NEW_ORGANISATION.match(org):
         raise AccountError("organisation: 2-40 chars of a-z, 0-9, '_'")
+    if org == get_settings().demo_organisation_id:
+        raise AccountError("organisation: that name is reserved")
     if len(password) < MIN_PASSWORD:
         raise AccountError(f"password must be at least {MIN_PASSWORD} characters")
     user = User(user_id=f"u_{uuid.uuid4().hex[:16]}", username=username, organisation_id=org)

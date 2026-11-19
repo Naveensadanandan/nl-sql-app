@@ -29,6 +29,7 @@ Later (see docs/entity-extraction.md): hybrid dense + sparse search.
 
 import logging
 from functools import lru_cache
+from typing import Any
 
 from qdrant_client import AsyncQdrantClient, models
 from qdrant_client.http.exceptions import UnexpectedResponse
@@ -125,6 +126,28 @@ async def search_glossary(
 ) -> list[GlossaryHit]:
     """Usable definitions similar to `text` with score >= glossary_min_score, best first."""
     return (await search_glossary_batch([text], organisation_id, user_id, sections, limit))[0]
+
+
+async def list_glossary(
+    organisation_id: str, user_id: str | None = None, limit: int = 100
+) -> list[dict[str, Any]]:
+    """Usable entries visible to the user (same filter as search), sorted by section and name."""
+    s = get_settings()
+    try:
+        points, _next = await client().scroll(
+            s.glossary_collection,
+            scroll_filter=build_filter(organisation_id, user_id),
+            limit=limit,
+            with_payload=True,
+            with_vectors=False,
+        )
+    except UnexpectedResponse as e:
+        if e.status_code == 404:
+            return []
+        raise
+    keys = ("name", "description", "section", "synonyms", "status", "sql_expression")
+    rows = [{k: (p.payload or {}).get(k) for k in keys} for p in points]
+    return sorted(rows, key=lambda r: (str(r["section"]), str(r["name"]).lower()))
 
 
 async def warmup() -> None:

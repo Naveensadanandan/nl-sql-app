@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from nlsql.api.routes import ask, auth, sources
 from nlsql.core import app_db, background, query_store
 from nlsql.core.config import get_settings
+from nlsql.knowledge.demo import seed_demo_knowledge
 from nlsql.retrieval.glossary_search import warmup
 
 log = logging.getLogger(__name__)
@@ -22,9 +23,7 @@ def _check_query_role() -> None:
     import psycopg
 
     with psycopg.connect(get_settings().psycopg_url, connect_timeout=5) as conn:
-        row = conn.execute(
-            "SELECT rolsuper FROM pg_roles WHERE rolname = current_user"
-        ).fetchone()
+        row = conn.execute("SELECT rolsuper FROM pg_roles WHERE rolname = current_user").fetchone()
     if row and row[0]:
         log.warning(
             "NLSQL_DATABASE_URL uses a SUPERUSER. Use a read-only role in any shared deployment "
@@ -51,6 +50,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as e:  # noqa: BLE001 - log-in fails with 500 until the DB is reachable
         log.warning("app tables unavailable at startup: %s", type(e).__name__)
     background.spawn(warmup(), name="glossary_warmup")  # load fastembed off the first request
+    # Glossary + value index for the shared demo data, under the demo organisation.
+    background.spawn(seed_demo_knowledge(), name="seed_demo_knowledge")
     yield
     await background.drain()
     query_store.close_pool()

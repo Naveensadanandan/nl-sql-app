@@ -77,6 +77,51 @@ async def search_values(
     ]
 
 
+async def summarize_values(
+    organisation_id: str, tables: list[str], per_column: int = 6
+) -> list[dict[str, Any]]:
+    """Indexed columns of `tables` with their value count and a few example values.
+
+    Empty if the organisation has no index yet, or `tables` is empty. Examples are the first
+    values by name, with their synonyms.
+    """
+    if not tables:
+        return []
+    query: dict[str, Any] = {"terms": {"table": tables}}
+    aggs = {
+        "cols": {
+            "multi_terms": {"terms": [{"field": "table"}, {"field": "column"}], "size": 50},
+            "aggs": {
+                "examples": {
+                    "top_hits": {
+                        "size": per_column,
+                        "sort": [{"name.raw": "asc"}],
+                        "_source": ["name", "synonyms"],
+                    }
+                }
+            },
+        }
+    }
+    try:
+        resp = await _client().search(
+            index=index_name(organisation_id), query=query, aggs=aggs, size=0
+        )
+    except NotFoundError:
+        return []
+    out = []
+    for b in resp["aggregations"]["cols"]["buckets"]:
+        table, column = b["key"]
+        out.append(
+            {
+                "table": table,
+                "column": column,
+                "count": b["doc_count"],
+                "examples": [h["_source"] for h in b["examples"]["hits"]["hits"]],
+            }
+        )
+    return sorted(out, key=lambda c: (c["count"], c["table"], c["column"]))
+
+
 def decide(text: str, hits: list[ValueItem]) -> ValueMatch:
     """Apply the accept / ambiguous / not-found rule to ranked hits."""
     s = get_settings()

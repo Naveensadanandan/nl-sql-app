@@ -110,7 +110,19 @@ after the TTL. Expired rows are cleaned up at the next log-in.
 
 ## 3. Bringing your data in (secured)
 
-Pick or add a source in the sidebar, under **Data source**.
+After log-in the sidebar has two pages. **Get started** tours the shared demo data (tables
+and 5 sample rows from `GET /sources/preview`), its business terms and indexed values
+(`GET /sources/knowledge`), offers sample questions, and always asks on the demo data.
+**Workspace** is where you pick or add a source, under **Data source**.
+
+**Demo knowledge.** Questions on the shared demo data (from either page) use the glossary
+(Qdrant) and value index (Elasticsearch, `values_demo_organisation`) of the reserved
+organisation `NLSQL_DEMO_ORGANISATION_ID` (default `demo_organisation`), never the asker's.
+So every user's demo gives the same answers, and nobody's own glossary changes them. The API
+seeds both at start (`nlsql/knowledge/demo.py`; run it by hand with
+`python -m nlsql.knowledge.demo`). Glossary seeding only adds missing entries, so an admin
+upload to the demo organisation replaces a seeded entry. The demo glossary is read-only for
+users: drafted definitions are shown but not saved. Nobody can sign up with that organisation id.
 
 ### a) Connect your own Postgres (the "user server")
 
@@ -208,8 +220,9 @@ Optional, a third terminal for the admin server (glossary CSV upload):
 
 ### Try it
 
-1. Open http://localhost:8501, then go to **Create account**, then **Log in**.
-2. In the sidebar, open **Add data source**, then **Upload CSV**, and choose a small sales CSV.
+1. Open http://localhost:8501, then go to **Create account**, then **Log in**. You land on
+   **Get started**: try a sample question on the demo data there.
+2. Open **Workspace** in the sidebar, open **Add data source**, then **Upload CSV**, and choose a small sales CSV.
 3. Ask *"total amount of coconut oil 5l sold by region"*.
 4. The left side shows the answer, the SQL that ran and the result table. The right side has
    expandable panels:
@@ -230,6 +243,8 @@ Optional, a third terminal for the admin server (glossary CSV upload):
 | GET | `/sources` | token | your organisation's sources |
 | POST | `/sources/postgres` | token | test (read-only) + save an encrypted connection |
 | POST | `/sources/csv` | token | upload a CSV (multipart `file`, optional `table`, `name`) |
+| GET | `/sources/knowledge?source_id=` | token | glossary terms + indexed values questions on that source use (default: demo organisation) |
+| GET | `/sources/preview?source_id=&rows=5` | token | columns + first rows of each table (default: shared demo data); validated, read-only SQL |
 | DELETE | `/sources/{id}` | token | remove a source (drops an uploaded table) |
 | POST | `/ask` | token | `{question, source_id?, business_context?}` |
 | GET | `/questions/{id}` | token | stored SQL, rows, interpretation |

@@ -4,7 +4,9 @@
 - retrieve_glossary: business_term / metric entities -> approved or proposed definitions (Qdrant)
 
 Both are safe to run before the servers exist: if the URL setting or organisation_id is
-missing they return "nothing found" results instead of failing. Value lookups run
+missing they return "nothing found" results instead of failing. Questions on the shared demo
+data look up the demo organisation's knowledge (registry.knowledge_organisation), never the
+asker's, so a user's own glossary cannot change demo answers. Value lookups run
 concurrently; glossary lookups go to Qdrant as one batch (one embedding pass, one round trip).
 """
 
@@ -16,29 +18,32 @@ from nlsql.agent.state import AgentState
 from nlsql.core.config import get_settings
 from nlsql.retrieval.glossary_search import search_glossary_batch
 from nlsql.retrieval.value_search import decide, search_values
-from nlsql.sources.registry import SHARED, target_for
+from nlsql.sources.registry import knowledge_organisation, target_for
 
 
 async def resolve_values(state: AgentState) -> dict[str, Any]:
     values = [e for e in state.get("entities", []) if e.kind == "db_value"]
-    org = state.get("organisation_id")
+    org = knowledge_organisation(state.get("source_id"), state.get("organisation_id"))
     if not values:
         return {"resolved_values": []}
     if not get_settings().es_url or not org:
         return {"resolved_values": [ValueMatch(text=e.text, status="skipped") for e in values]}
-    # Only values from the tables this question can query (the selected data source).
-    target = target_for(state.get("source_id"), org)
-    tables = None if target.key == SHARED else target.tables
+    # Only values from the tables this question can query (the selected data source, or the
+    # shared demo tables), so stray values in the index never reach the answer.
+    tables = target_for(state.get("source_id"), state.get("organisation_id")).tables
     hits = await asyncio.gather(*(search_values(e.text, org, tables=tables) for e in values))
     return {"resolved_values": [decide(e.text, h) for e, h in zip(values, hits, strict=True)]}
 
 
 async def retrieve_glossary(state: AgentState) -> dict[str, Any]:
     terms = [e for e in state.get("entities", []) if e.kind in ("business_term", "metric")]
-    org = state.get("organisation_id")
+    source_id = state.get("source_id")
+    org = knowledge_organisation(source_id, state.get("organisation_id"))
     if not terms or not get_settings().qdrant_url or not org:
         return {"glossary_hits": []}
-    results = await search_glossary_batch([t.text for t in terms], org, state.get("user_id"))
+    # Demo knowledge is org-wide only: no private entries of the asker apply to it.
+    user_id = state.get("user_id") if source_id else None
+    results = await search_glossary_batch([t.text for t in terms], org, user_id)
     # A confirmed definition wins: drop proposed hits for a term that also has an approved one.
     results = [
         [h for h in hits if h.status == "approved"]
