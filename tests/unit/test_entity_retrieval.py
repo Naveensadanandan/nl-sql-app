@@ -115,7 +115,7 @@ async def test_extract_entities_wraps_question(monkeypatch):
 async def test_resolve_values_only_searches_db_values(monkeypatch, settings):
     seen = []
 
-    async def fake_search(text, org, size=5):
+    async def fake_search(text, org, size=5, tables=None):
         seen.append((text, org))
         return [_item("5000 ml Coconut Oil", 9.0)]
 
@@ -178,7 +178,7 @@ async def test_graph_end_to_end_with_fakes(monkeypatch):
     monkeypatch.setattr(
         ext_module, "_extract_llm", lambda: _Fake(EntityExtraction(entities=_ENTITIES))
     )
-    monkeypatch.setattr(schema_module, "get_table_schema", lambda table: {"table": table})
+    monkeypatch.setattr(schema_module, "get_table_schema", lambda table, *a, **k: {"table": table})
     s = get_settings()
     monkeypatch.setattr(s, "es_url", None)
     monkeypatch.setattr(s, "qdrant_url", None)

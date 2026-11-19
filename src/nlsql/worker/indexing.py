@@ -207,18 +207,19 @@ def list_tables(schema: str) -> list[str]:
 
 
 def collect_values(
-    schema: str, tables: list[str] | None, max_distinct: int
+    schema: str, tables: list[str] | None, max_distinct: int, url: str | None = None
 ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
     """Distinct values of text columns that look like categories.
 
     A column is skipped when it has more than `max_distinct` distinct values (names, notes,
-    ids). Runs in a read-only transaction with a statement timeout.
+    ids). Runs in a read-only transaction with a statement timeout. `url` (plain postgresql://)
+    reads a user's data source; default: the app database.
     Returns (docs, skipped columns, every table scanned).
     """
     docs: list[dict[str, Any]] = []
     skipped: list[str] = []
     scanned: set[str] = set()
-    with psycopg.connect(get_settings().psycopg_url) as conn:
+    with psycopg.connect(url or get_settings().psycopg_url, connect_timeout=10) as conn:
         conn.read_only = True
         with conn.cursor() as cur:
             cur.execute("SET LOCAL statement_timeout = '30s'")

@@ -23,6 +23,8 @@ dependencies = [
     "elasticsearch[async]>=8.15,<9",
     "qdrant-client[fastembed]>=1.11",
     "httpx>=0.27",
+    "cryptography>=43.0",  # Fernet encryption of user database URLs (sources/crypto.py)
+    "streamlit>=1.50",  # UI (ui/app.py)
 ]
 
 [project.optional-dependencies]
@@ -37,10 +39,8 @@ later = [
     "pint>=0.24",  # unit normalisation
     "arq>=0.26",
     "redis>=5.0",
-    "cryptography>=43.0",  # Fernet DSN encryption
     "structlog>=24.4",
     "prometheus-client>=0.20",
-    "streamlit>=1.38",
 ]
 dev = [
     "pytest>=8.3",

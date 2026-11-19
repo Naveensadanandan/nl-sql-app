@@ -50,6 +50,11 @@ def _client() -> AsyncElasticsearch:
     return AsyncElasticsearch(get_settings().es_url)
 
 
+def client() -> AsyncElasticsearch:
+    """The process-wide ES client (also used to index a new data source's values)."""
+    return _client()
+
+
 async def search_values(
     text: str, organisation_id: str, size: int = 5, tables: list[str] | None = None
 ) -> list[ValueItem]:

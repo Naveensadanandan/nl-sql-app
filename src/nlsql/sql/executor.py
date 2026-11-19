@@ -57,9 +57,39 @@ def _plan_cost(raw: Any) -> float:
     return float(plan[0]["Plan"]["Total Cost"])
 
 
-def _run(sql: str) -> QueryResult:
+_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
+
+
+def _search_path(schema: str) -> str:
+    """SET LOCAL search_path to exactly the source's schema (pg_catalog is always implicit).
+
+    Unqualified table names then resolve inside the validated schema only, never `public` or
+    another workspace's ws_ schema.
+    """
+    if not _IDENT.match(schema):  # letters, digits, '_' only: safe inside double quotes
+        raise SqlExecutionError("invalid schema name")
+    return f'SET LOCAL search_path = "{schema}"'
+
+
+def _set_role(role: str) -> str:
+    """SET LOCAL ROLE: Postgres checks every privilege as this role until the transaction ends.
+
+    The validator rejects SET / RESET / set_config, so model SQL cannot switch back.
+    """
+    if not _IDENT.match(role):
+        raise SqlExecutionError("invalid role name")
+    return f'SET LOCAL ROLE "{role}"'
+
+
+def _run(sql: str, url: str | None, schema: str | None, role: str | None) -> QueryResult:
     s = get_settings()
-    with engine(s.sqlalchemy_url).connect() as conn:
+    try:
+        conn = engine(url or s.sqlalchemy_url).connect()
+    except Exception as e:
+        # Driver text names the host and user: keep it out of state, traces and the debugger.
+        name = type(getattr(e, "orig", e)).__name__
+        raise SqlExecutionError(f"could not connect to the data source ({name})") from None
+    with conn:
         try:
             # READ ONLY must be the first statement of the transaction.
             conn.exec_driver_sql("SET TRANSACTION READ ONLY", execution_options=_NO_PARAMS)
@@ -67,6 +97,11 @@ def _run(sql: str) -> QueryResult:
                 f"SET LOCAL statement_timeout = {int(s.sql_timeout_seconds) * 1000}",
                 execution_options=_NO_PARAMS,
             )
+            conn.exec_driver_sql(
+                _search_path(schema or s.data_schema), execution_options=_NO_PARAMS
+            )
+            if role:
+                conn.exec_driver_sql(_set_role(role), execution_options=_NO_PARAMS)
             cost = _plan_cost(
                 conn.exec_driver_sql(
                     f"EXPLAIN (FORMAT JSON) {sql}", execution_options=_NO_PARAMS
@@ -91,6 +126,12 @@ def _run(sql: str) -> QueryResult:
     return QueryResult(columns=columns, rows=rows, row_count=len(rows), truncated=truncated)
 
 
-async def execute_readonly(sql: str) -> QueryResult:
-    """Run `sql` in a read-only transaction off the event loop. Raises SqlExecutionError."""
-    return await asyncio.to_thread(_run, sql)
+async def execute_readonly(
+    sql: str, url: str | None = None, schema: str | None = None, role: str | None = None
+) -> QueryResult:
+    """Run `sql` in a read-only transaction off the event loop. Raises SqlExecutionError.
+
+    `url` (SQLAlchemy form) and `schema` select the data source; default: the configured one.
+    `role` narrows privileges for the transaction (an organisation's CSV reader role).
+    """
+    return await asyncio.to_thread(_run, sql, url, schema, role)

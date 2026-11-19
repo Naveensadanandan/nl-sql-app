@@ -69,6 +69,21 @@ class Settings(BaseSettings):
     value_max_distinct: int = 5000  # a text column with more distinct values is not a category
     admin_max_upload_mb: int = 5
 
+    # Users, sessions and data sources (src/nlsql/core/accounts.py, src/nlsql/sources).
+    # Their tables live in <app_schema> on the query-store (writer) connection.
+    app_schema: str = "nlsql_app"
+    session_ttl_hours: int = 12  # a login token stops working after this
+    # Fernet key that encrypts user database URLs at rest. Without it, Postgres sources are off.
+    fernet_key: SecretStr | None = None
+    upload_max_mb: int = 20  # CSV upload size limit
+    source_max_tables: int = 50  # tables one data source may expose to the agent
+    # Read-only role behind database_url. When it differs from the writer, uploaded CSV tables
+    # are granted to it (SELECT only), so the agent can query them.
+    query_role: str | None = None
+    # Questions without a data source use the configured data_schema / data_tables, shared by
+    # every user (demo data). Set false so each user must connect or upload their own data.
+    shared_data_enabled: bool = True
+
     @property
     def sqlalchemy_url(self) -> str:
         """database_url for create_engine (postgresql+psycopg://)."""

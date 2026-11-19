@@ -59,11 +59,21 @@ def _schema() -> str:
     return name
 
 
+def _reset(conn: Any) -> None:
+    """Readers set read_only on a pooled connection; undo it before the next writer gets it."""
+    conn.read_only = False
+
+
 @lru_cache
 def _pool() -> ConnectionPool:
     s = get_settings()
     return ConnectionPool(
-        s.results_psycopg_url, min_size=1, max_size=s.store_pool_size, open=True, name="store"
+        s.results_psycopg_url,
+        min_size=1,
+        max_size=s.store_pool_size,
+        open=True,
+        name="store",
+        reset=_reset,
     )
 
 
@@ -129,7 +139,7 @@ def ensure_store() -> None:
 # --- result table layout ------------------------------------------------------------------
 
 
-def _column_names(names: list[str]) -> list[str]:
+def safe_column_names(names: list[str]) -> list[str]:
     """Safe, unique, lower-case Postgres column names. The originals are kept in query_log."""
     out: list[str] = []
     seen: set[str] = set()
@@ -170,7 +180,7 @@ def result_columns(result: QueryResult | None) -> list[dict[str, str]]:
     """[{name (original), column (safe), type}] for the result table; [] when there is none."""
     if result is None or not result.columns:
         return []
-    names = _column_names(result.columns)
+    names = safe_column_names(result.columns)
     types = [_pg_type([row[i] for row in result.rows]) for i in range(len(names))]
     return [
         {"name": orig, "column": col, "type": t}

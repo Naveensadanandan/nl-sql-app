@@ -18,6 +18,8 @@ class AgentState(TypedDict, total=False):
     question_id: str  # q_<uuid hex>; set by the API (or save_result). Also the result table name
     organisation_id: str  # tenant key: ES index + mandatory Qdrant filter
     user_id: str  # lets Qdrant return this user's private definitions too
+    source_id: str  # data source to query (sources/registry.py); unset = shared config tables.
+    # Only the id travels in state (it is traced); nodes resolve the URL via target_for.
     business_context: str  # user-supplied description of the business / data definitions
     guard: GuardDecision
     schema: list[dict]  # type: ignore[type-arg]  # one fetch_schema dict per table

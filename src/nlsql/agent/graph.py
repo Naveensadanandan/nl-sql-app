@@ -2,6 +2,7 @@ from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
+from nlsql.agent.node_log import logged
 from nlsql.agent.nodes.debug_sql import debug_sql
 from nlsql.agent.nodes.define_terms import define_terms
 from nlsql.agent.nodes.extract_entities import extract_entities
@@ -27,21 +28,21 @@ def gather(state: AgentState) -> dict[str, Any]:
 
 
 builder = StateGraph(AgentState)
-builder.add_node("guard", guard)
-builder.add_node("reject", reject)
-builder.add_node("fetch_schema", fetch_schema)
-builder.add_node("extract_entities", extract_entities)
-builder.add_node("resolve_values", resolve_values)
-builder.add_node("retrieve_glossary", retrieve_glossary)
-builder.add_node("gather", gather)
-builder.add_node("define_terms", define_terms)
-builder.add_node("generate_sql", generate_sql)
-builder.add_node("validate_sql", validate_sql)
-builder.add_node("execute_sql", execute_sql)
-builder.add_node("debug_sql", debug_sql)
-builder.add_node("respond", respond)
-builder.add_node("remember_definitions", remember_definitions)
-builder.add_node("save_result", save_result)
+builder.add_node("guard", logged("guard", guard))
+builder.add_node("reject", logged("reject", reject))
+builder.add_node("fetch_schema", logged("fetch_schema", fetch_schema))
+builder.add_node("extract_entities", logged("extract_entities", extract_entities))
+builder.add_node("resolve_values", logged("resolve_values", resolve_values))
+builder.add_node("retrieve_glossary", logged("retrieve_glossary", retrieve_glossary))
+builder.add_node("gather", logged("gather", gather))
+builder.add_node("define_terms", logged("define_terms", define_terms))
+builder.add_node("generate_sql", logged("generate_sql", generate_sql))
+builder.add_node("validate_sql", logged("validate_sql", validate_sql))
+builder.add_node("execute_sql", logged("execute_sql", execute_sql))
+builder.add_node("debug_sql", logged("debug_sql", debug_sql))
+builder.add_node("respond", logged("respond", respond))
+builder.add_node("remember_definitions", logged("remember_definitions", remember_definitions))
+builder.add_node("save_result", logged("save_result", save_result))
 
 # Parallel start (one superstep): the guard no longer delays the other LLM calls.
 #   START -+- guard ---------------------------------------------+

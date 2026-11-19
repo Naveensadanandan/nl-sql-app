@@ -31,8 +31,8 @@ source myenv/Scripts/activate        # PowerShell: myenv\Scripts\Activate.ps1
 pip install -e ".[dev]"              # install app + dev tools (".[later]" = not-yet-used deps)
 cp .env.example .env                 # then fill NLSQL_OPENROUTER_API_KEY, LANGSMITH_API_KEY
 docker compose up -d                 # postgres, elasticsearch, qdrant, redis
-uvicorn nlsql.api.main:app --reload  # API on :8000
-streamlit run ui/app.py              # UI on :8501
+uvicorn nlsql.api.main:app --reload  # API on :8000 (login, sources, ask)
+streamlit run ui/app.py              # UI on :8501 (NLSQL_API_URL points it at the API)
 langgraph dev                        # LangGraph Studio for graph debugging (langgraph.json)
 ```
 
@@ -74,6 +74,9 @@ the exact models and prompts being deployed (see docs/v0.1-release-review.md §5
   SQL generation and correction. Model IDs come only from `core/config.py`.
 - **Evals ship with features**: a new node or prompt change needs cases added to `evals/datasets/`
   (run at deployment, not per commit, until v1).
+- **Auth**: every data endpoint takes `CurrentUser` (`api/deps.py`); `organisation_id` / `user_id`
+  come from the session, never the request body. Agent state carries only `source_id`; nodes
+  resolve the connection with `sources.registry.target_for` (see docs/ui-and-auth.md).
 - **Secrets**: DB credentials are Fernet-encrypted at rest. Never log connection strings or
   raw result rows. Never read `.env`.
 

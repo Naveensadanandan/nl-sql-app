@@ -16,6 +16,7 @@ from nlsql.agent.state import AgentState
 from nlsql.core.config import get_settings
 from nlsql.retrieval.glossary_search import search_glossary_batch
 from nlsql.retrieval.value_search import decide, search_values
+from nlsql.sources.registry import SHARED, target_for
 
 
 async def resolve_values(state: AgentState) -> dict[str, Any]:
@@ -25,7 +26,10 @@ async def resolve_values(state: AgentState) -> dict[str, Any]:
         return {"resolved_values": []}
     if not get_settings().es_url or not org:
         return {"resolved_values": [ValueMatch(text=e.text, status="skipped") for e in values]}
-    hits = await asyncio.gather(*(search_values(e.text, org) for e in values))
+    # Only values from the tables this question can query (the selected data source).
+    target = target_for(state.get("source_id"), org)
+    tables = None if target.key == SHARED else target.tables
+    hits = await asyncio.gather(*(search_values(e.text, org, tables=tables) for e in values))
     return {"resolved_values": [decide(e.text, h) for e, h in zip(values, hits, strict=True)]}
 
 
