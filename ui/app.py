@@ -427,6 +427,7 @@ def side_panels(item: dict[str, Any] | None) -> None:
                 f"{c.get('table')}.{c.get('column')} = '{c.get('name')}'"
                 for c in v.get("candidates", [])
             ],
+            "method": v.get("method", "lexical"),
         }
         for v in out.get("resolved_values", [])
     ]
@@ -435,7 +436,10 @@ def side_panels(item: dict[str, Any] | None) -> None:
             st.caption("No specific values (products, regions, …) in this question.")
         for v in values:
             if v["status"] == "resolved":
-                st.markdown(f"“{v['phrase']}” → `{v['table']}.{v['column']}` = **{v['value']}**")
+                by_meaning = " _(matched by meaning)_" if v.get("method") == "semantic" else ""
+                st.markdown(
+                    f"“{v['phrase']}” → `{v['table']}.{v['column']}` = **{v['value']}**{by_meaning}"
+                )
             else:
                 st.markdown(f"“{v['phrase']}” — `{v['status']}`")
             if v.get("alternatives"):
@@ -566,10 +570,7 @@ def demo_knowledge() -> None:
     else:
         rows = []
         for c in k["values"]:
-            examples = [
-                e["name"] + (f" ← {', '.join(e['synonyms'])}" if e.get("synonyms") else "")
-                for e in c["examples"]
-            ]
+            examples = [e["name"] for e in c["examples"]]
             more = c["count"] - len(c["examples"])
             rows.append(
                 {

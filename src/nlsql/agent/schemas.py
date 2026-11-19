@@ -86,6 +86,8 @@ class ValueMatch(BaseModel):
     status: MatchStatus  # skipped = value index not configured / no organisation
     match: ValueItem | None = None  # set only when status == "resolved"
     candidates: list[ValueItem] = Field(default_factory=list)  # options to show when ambiguous
+    # lexical = BM25 on spelling; semantic = embedding fallback (a guess: shown as assumption)
+    method: Literal["lexical", "semantic"] = "lexical"
 
 
 class GlossaryHit(IndexedItem):
@@ -208,6 +210,7 @@ class ValueMapping(BaseModel):
     column: str | None = None
     value: str | None = None  # the stored literal used in SQL (resolved only)
     alternatives: list[str] = Field(default_factory=list)  # "table.column = 'value'"
+    method: Literal["lexical", "semantic"] = "lexical"  # how the match was found
 
 
 class Repair(BaseModel):

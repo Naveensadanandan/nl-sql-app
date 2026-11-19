@@ -1,0 +1,11 @@
+{"phrase": "Female", "tables": ["retail_sales"], "expect_status": "resolved", "expect_method": "lexical", "expect_value": "retail_sales.gender = 'Female'"}
+{"phrase": "femal", "tables": ["retail_sales"], "expect_status": "resolved", "expect_method": "lexical", "expect_value": "retail_sales.gender = 'Female'"}
+{"phrase": "electronic", "tables": ["retail_sales"], "expect_status": "resolved", "expect_method": "lexical", "expect_value": "retail_sales.product_category = 'Electronics'"}
+{"phrase": "women", "tables": ["retail_sales"], "expect_status": "resolved", "expect_method": "semantic", "expect_value": "retail_sales.gender = 'Female'"}
+{"phrase": "ladies", "tables": ["retail_sales"], "expect_status": "resolved", "expect_method": "semantic", "expect_value": "retail_sales.gender = 'Female'"}
+{"phrase": "men", "tables": ["retail_sales"], "expect_status": "resolved", "expect_method": "semantic", "expect_value": "retail_sales.gender = 'Male'"}
+{"phrase": "gadgets", "tables": ["retail_sales"], "expect_status": "resolved", "expect_method": "semantic", "expect_value": "retail_sales.product_category = 'Electronics'"}
+{"phrase": "apparel", "tables": ["retail_sales"], "expect_status": "resolved", "expect_method": "semantic", "expect_value": "retail_sales.product_category = 'Clothing'"}
+{"phrase": "cosmetics", "tables": ["retail_sales"], "expect_status": "resolved", "expect_method": "semantic", "expect_value": "retail_sales.product_category = 'Beauty'"}
+{"phrase": "groceries", "tables": ["retail_sales"], "expect_status": "not_found", "expect_method": "semantic", "expect_value": null}
+{"phrase": "kerala", "tables": ["retail_sales"], "expect_status": "not_found", "expect_method": "semantic", "expect_value": null}

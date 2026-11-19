@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     es_url: str | None = None
     value_min_score: float = 1.0  # BM25 score below which a hit is ignored
     value_ambiguity_ratio: float = 0.8  # 2nd hit >= ratio * top hit -> ask the user to choose
+    # Semantic fallback (kNN on fastembed vectors, embedding_model) when BM25 finds nothing.
+    # Calibrate both numbers on evals/datasets/values.jsonl when the embedding model changes.
+    value_semantic_enabled: bool = True
+    value_semantic_min_score: float = 0.75  # cosine similarity floor for a semantic hit
+    value_semantic_margin: float = 0.03  # 2nd hit within this cosine of the top -> ambiguous
 
     # Business definitions (Qdrant). Leave qdrant_url unset until the server exists.
     qdrant_url: str | None = None

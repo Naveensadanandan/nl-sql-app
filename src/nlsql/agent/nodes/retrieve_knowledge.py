@@ -1,6 +1,7 @@
 """Lookup nodes that run in parallel after extract_entities (no LLM).
 
-- resolve_values:    db_value entities -> exact stored values via Elasticsearch
+- resolve_values:    db_value entities -> exact stored values via Elasticsearch (BM25, then a
+                     kNN fallback for words that mean a value but are spelled differently)
 - retrieve_glossary: business_term / metric entities -> approved or proposed definitions (Qdrant)
 
 Both are safe to run before the servers exist: if the URL setting or organisation_id is
@@ -17,7 +18,12 @@ from nlsql.agent.schemas import ValueMatch
 from nlsql.agent.state import AgentState
 from nlsql.core.config import get_settings
 from nlsql.retrieval.glossary_search import search_glossary_batch
-from nlsql.retrieval.value_search import decide, search_values
+from nlsql.retrieval.value_search import (
+    decide,
+    decide_semantic,
+    search_values,
+    search_values_semantic,
+)
 from nlsql.sources.registry import knowledge_organisation, target_for
 
 
@@ -31,8 +37,16 @@ async def resolve_values(state: AgentState) -> dict[str, Any]:
     # Only values from the tables this question can query (the selected data source, or the
     # shared demo tables), so stray values in the index never reach the answer.
     tables = target_for(state.get("source_id"), state.get("organisation_id")).tables
-    hits = await asyncio.gather(*(search_values(e.text, org, tables=tables) for e in values))
-    return {"resolved_values": [decide(e.text, h) for e, h in zip(values, hits, strict=True)]}
+    matches = await asyncio.gather(*(_resolve(e.text, org, tables) for e in values))
+    return {"resolved_values": list(matches)}
+
+
+async def _resolve(text: str, org: str, tables: list[str]) -> ValueMatch:
+    """Lexical (BM25) first; semantic (kNN) only when nothing matched by spelling."""
+    match = decide(text, await search_values(text, org, tables=tables))
+    if match.status != "not_found" or not get_settings().value_semantic_enabled:
+        return match
+    return decide_semantic(text, await search_values_semantic(text, org, tables=tables))
 
 
 async def retrieve_glossary(state: AgentState) -> dict[str, Any]:

@@ -8,7 +8,8 @@ value matches, and nobody's own glossary changes demo answers.
 `seed_demo_knowledge()` runs in the background at API start (and as
 `python -m nlsql.knowledge.demo`):
 - ES: re-indexes the distinct category values of the shared tables into
-  values_<demo organisation>, adding the synonyms below so "women" finds "Female".
+  values_<demo organisation>, exactly as stored (no hand-written synonyms). Words like
+  "women" -> "Female" are found by the semantic fallback in value_search.
 - Qdrant: adds the demo glossary entries that are missing. Existing entries are never
   overwritten, so an admin upload to the demo organisation (same name and section) wins.
 
@@ -79,15 +80,6 @@ DEMO_GLOSSARY: list[GlossaryRow] = [
     ),
 ]
 
-# Extra words people use for stored demo values (lower-cased stored value -> synonyms).
-DEMO_VALUE_SYNONYMS: dict[str, list[str]] = {
-    "female": ["women", "woman", "ladies", "female customers"],
-    "male": ["men", "man", "gents", "male customers"],
-    "electronics": ["electronic items", "gadgets", "devices", "tech"],
-    "clothing": ["clothes", "apparel", "fashion", "garments"],
-    "beauty": ["cosmetics", "makeup", "skincare", "beauty products"],
-}
-
 
 async def seed_values() -> int:
     """Re-index the shared tables' category values under the demo organisation."""
@@ -101,8 +93,6 @@ async def seed_values() -> int:
     docs, _skipped, _scanned = await asyncio.to_thread(
         indexing.collect_values, s.data_schema, tables, s.value_max_distinct
     )
-    for d in docs:
-        d["synonyms"] = DEMO_VALUE_SYNONYMS.get(d["name"].lower(), [])
     return await indexing.index_values(client(), s.demo_organisation_id, docs, tables)
 
 
