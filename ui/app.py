@@ -16,6 +16,7 @@ import contextlib
 import os
 import time
 from typing import Any
+from urllib.parse import quote, unquote, urlsplit
 
 import pandas as pd
 import streamlit as st
@@ -198,6 +199,237 @@ def account_box() -> None:
             st.rerun()
 
 
+def build_pg_url(host: str, port: str, database: str, user: str, password: str) -> str:
+    """postgresql:// URL from separate fields (user and password percent-encoded)."""
+    auth = f"{quote(user.strip(), safe='')}:{quote(password, safe='')}"
+    return f"postgresql://{auth}@{host.strip()}:{port.strip() or '5432'}/{database.strip()}"
+
+
+def database_name(url: str) -> str:
+    with contextlib.suppress(ValueError):
+        return unquote(urlsplit(url).path.lstrip("/")) or ""
+    return ""
+
+
+def pg_connect_step1(info: dict[str, Any]) -> None:
+    """Connection details -> POST /sources/postgres/discover (nothing is saved yet)."""
+    if not info["postgres_enabled"]:
+        reason = info.get("postgres_disabled_reason") or "NLSQL_FERNET_KEY is not set"
+        st.error(
+            f"Database connections are turned off on the API server: {reason}. "
+            "Add a key to .env and restart the API (see docs/ui-and-auth.md)."
+        )
+        st.code(
+            'python -c "from cryptography.fernet import Fernet; '
+            'print(Fernet.generate_key().decode())"',
+            language="bash",
+        )
+    st.caption(info["read_only_help"])
+    with st.expander("Show the GRANT script for a read-only role"):
+        st.code(GRANT_SQL, language="sql")
+    mode = st.segmented_control(
+        "Connect with", ["Details", "Connection URL"], default="Details", key="pg_mode"
+    )
+    with st.form("pg_discover"):
+        if mode == "Connection URL":
+            url = st.text_input(
+                "Connection URL",
+                type="password",
+                placeholder="postgresql://nlsql_reader:***@host:5432/mydb",
+                help="Stored encrypted once you connect. Never shown again.",
+            )
+        else:
+            a, b = st.columns([3, 1])
+            host = a.text_input("Host", placeholder="db.example.com")
+            port = b.text_input("Port", value="5432")
+            database = st.text_input("Database", placeholder="mydb")
+            c, d = st.columns(2)
+            user = c.text_input("User", placeholder="nlsql_reader")
+            password = d.text_input("Password", type="password")
+            url = build_pg_url(host, port, database, user, password) if host else ""
+        go = st.form_submit_button(
+            "Test connection",
+            type="primary",
+            icon=":material/cable:",
+            disabled=not info["postgres_enabled"],
+        )
+    if go:
+        if not url:
+            st.error("Fill in the connection details first.")
+            return
+        try:
+            with st.spinner("Checking the role is read-only and listing its tables…"):
+                out = api("POST", "/sources/postgres/discover", json={"url": url})
+        except ApiError as e:
+            st.error(str(e))
+            return
+        # Held in server-side session state only until Connect or Start over.
+        ss.pg_discover = {"url": url, **out}
+        st.rerun(scope="fragment")
+
+
+def pg_connect_step2() -> None:
+    """Pick a schema and tables from what the role can read -> POST /sources/postgres."""
+    found = ss.pg_discover
+    usable = [x for x in found["schemas"] if not x["blocked"]]
+    st.success(
+        f"Connected read-only. {sum(len(x['tables']) for x in usable)} readable table(s) "
+        f"in {len(usable)} schema(s).",
+        icon=":material/verified_user:",
+    )
+    for x in found["schemas"]:
+        if x["blocked"]:
+            st.warning(f"Schema `{x['schema_name']}` can't be used: {x['blocked']}.")
+    if not usable:
+        if st.button("Start over"):
+            ss.pop("pg_discover", None)
+            st.rerun(scope="fragment")
+        return
+    names = [x["schema_name"] for x in usable]
+    name = st.text_input("Name", value=database_name(found["url"]) or "My database")
+    schema = st.selectbox(
+        "Schema",
+        names,
+        index=names.index("public") if "public" in names else 0,
+        format_func=lambda n: (
+            f"{n}  ({len(next(x for x in usable if x['schema_name'] == n)['tables'])} tables)"
+        ),
+    )
+    tables = next(x["tables"] for x in usable if x["schema_name"] == schema)
+    cap = found["max_tables"]
+    picked = st.multiselect(
+        "Tables to ask about",
+        tables,
+        default=tables[:cap],
+        max_selections=cap,
+        key=f"pg_tables_{schema}",
+        help=f"Up to {cap}. You can add or remove tables later with Manage tables.",
+    )
+    if len(tables) > cap:
+        st.caption(f"{len(tables)} tables in this schema; the first {cap} are picked.")
+    left, right = st.columns(2)
+    if left.button(
+        "Connect", type="primary", width="stretch", disabled=not picked, icon=":material/link:"
+    ):
+        body = {
+            "name": name.strip() or "My database",
+            "url": found["url"],
+            "schema_name": schema,
+            "tables": picked,
+        }
+        try:
+            with st.spinner("Saving the connection…"):
+                src = api("POST", "/sources/postgres", json=body)
+        except ApiError as e:
+            st.error(str(e))
+        else:
+            ss.pop("pg_discover", None)
+            ss["next_source"] = src["source_id"]
+            st.rerun()
+    if right.button("Start over", width="stretch"):
+        ss.pop("pg_discover", None)
+        st.rerun(scope="fragment")
+
+
+@st.dialog("Add a data source", width="large")
+def add_source_dialog(info: dict[str, Any]) -> None:
+    pg_tab, csv_tab = st.tabs(["Connect Postgres", "Upload CSV"])
+    with pg_tab:
+        if "pg_discover" in ss:
+            pg_connect_step2()
+        else:
+            pg_connect_step1(info)
+    with csv_tab, st.form("csv", clear_on_submit=True):
+        file = st.file_uploader("CSV file (UTF-8, header row)", type=["csv"])
+        table = st.text_input("Table name (optional)", placeholder="from the file name")
+        st.caption("To join several files, upload one, then add the rest with Manage tables.")
+        if st.form_submit_button("Upload", type="primary") and file is not None:
+            try:
+                with st.spinner("Loading…"):
+                    src = api(
+                        "POST",
+                        "/sources/csv",
+                        files={"file": (file.name, file.getvalue(), "text/csv")},
+                        data={"table": table} if table else {},
+                        timeout=120.0,
+                    )
+            except ApiError as e:
+                st.error(str(e))
+            else:
+                ss["next_source"] = src["source_id"]
+                st.rerun()
+
+
+@st.dialog("Manage tables", width="large")
+def manage_tables_dialog(src: dict[str, Any]) -> None:
+    """Add or remove tables of a saved source without entering the connection again."""
+    key = f"catalog_{src['source_id']}"
+    if key not in ss:
+        try:
+            with st.spinner("Re-checking the connection and listing tables…"):
+                ss[key] = api("GET", f"/sources/{src['source_id']}/tables")
+        except ApiError as e:
+            st.error(str(e))
+            return
+    cat = ss[key]
+    st.markdown(f"**{src['name']}** · schema `{cat['schema_name']}`")
+    if cat["kind"] == "postgres":
+        st.caption(
+            f"{len(cat['available'])} table(s) readable by the saved role. "
+            "Changes re-check that the role is still read-only."
+        )
+        new_ones = [t for t in cat["available"] if t not in cat["selected"]]
+        if new_ones:
+            st.info(
+                f"{len(new_ones)} table(s) not added yet: "
+                + ", ".join(new_ones[:10])
+                + (" …" if len(new_ones) > 10 else "")
+            )
+    else:
+        st.caption("Uploaded tables. A table you remove is deleted from this app.")
+    with st.form(f"tables_{src['source_id']}"):
+        picked = st.multiselect(
+            "Tables to ask about",
+            cat["available"],
+            default=[t for t in cat["selected"] if t in cat["available"]],
+            max_selections=cat["max_tables"],
+        )
+        saved = st.form_submit_button("Save tables", type="primary", icon=":material/save:")
+    if saved:
+        if not picked:
+            st.error("Keep at least one table, or delete the source.")
+        else:
+            try:
+                with st.spinner("Saving…"):
+                    api("PUT", f"/sources/{src['source_id']}/tables", json={"tables": picked})
+            except ApiError as e:
+                st.error(str(e))
+            else:
+                ss.pop(key, None)
+                st.rerun()
+    if cat["kind"] == "csv":
+        st.divider()
+        st.markdown("**Add a table from another CSV**")
+        with st.form(f"csv_add_{src['source_id']}", clear_on_submit=True):
+            file = st.file_uploader("CSV file (UTF-8, header row)", type=["csv"])
+            table = st.text_input("Table name (optional)", placeholder="from the file name")
+            if st.form_submit_button("Add table", icon=":material/add:") and file is not None:
+                try:
+                    with st.spinner("Loading…"):
+                        api(
+                            "POST",
+                            f"/sources/{src['source_id']}/csv",
+                            files={"file": (file.name, file.getvalue(), "text/csv")},
+                            data={"table": table} if table else {},
+                            timeout=120.0,
+                        )
+                except ApiError as e:
+                    st.error(str(e))
+                else:
+                    ss.pop(key, None)
+                    st.rerun()
+
+
 def source_sidebar() -> list[dict[str, Any]]:
     with st.sidebar:
         st.subheader("Data source")
@@ -217,7 +449,7 @@ def source_sidebar() -> list[dict[str, Any]]:
         if not options:
             st.info("Connect a database or upload a CSV to start.")
         else:
-            # A source added below takes effect on the next run (the picker is drawn first).
+            # A source added in a dialog takes effect on the next run (the picker is drawn first).
             if "next_source" in ss:
                 ss.source = ss.pop("next_source")
             if ss.source not in options:
@@ -226,79 +458,30 @@ def source_sidebar() -> list[dict[str, Any]]:
             current = next((s for s in sources if s["source_id"] == ss.source), None)
             if current:
                 st.caption(
-                    f"schema `{current['schema_name']}` · tables: "
-                    + ", ".join(f"`{t}`" for t in current["tables"])
+                    f"schema `{current['schema_name']}` · {len(current['tables'])} table(s): "
+                    + ", ".join(f"`{t}`" for t in current["tables"][:8])
+                    + (" …" if len(current["tables"]) > 8 else "")
                     + f" · value index: {current['values_status']}"
                 )
-                if st.button("Delete this source", type="secondary"):
+                a, b = st.columns(2)
+                if a.button("Manage tables", icon=":material/table_edit:", width="stretch"):
+                    ss.pop(f"catalog_{current['source_id']}", None)
+                    manage_tables_dialog(current)
+                if b.button("Delete", icon=":material/delete:", width="stretch"):
                     try:
                         api("DELETE", f"/sources/{current['source_id']}")
                         st.rerun()
                     except ApiError as e:
                         st.error(str(e))
 
-        with st.expander("➕ Add data source", expanded=not options):
-            pg_tab, csv_tab = st.tabs(["Connect Postgres", "Upload CSV"])
-            with pg_tab:
-                if not info["postgres_enabled"]:
-                    reason = info.get("postgres_disabled_reason") or "NLSQL_FERNET_KEY is not set"
-                    st.error(
-                        f"Database connections are turned off on the API server: {reason}. "
-                        "Add a key to .env and restart the API (see docs/ui-and-auth.md)."
-                    )
-                    st.code(
-                        'python -c "from cryptography.fernet import Fernet; '
-                        'print(Fernet.generate_key().decode())"',
-                        language="bash",
-                    )
-                st.caption(info["read_only_help"])
-                with st.popover("Show the GRANT script"):
-                    st.code(GRANT_SQL, language="sql")
-                with st.form("pg", clear_on_submit=True):
-                    name = st.text_input("Name", placeholder="Sales DB")
-                    url = st.text_input(
-                        "Connection URL",
-                        type="password",
-                        placeholder="postgresql://nlsql_reader:***@host:5432/mydb",
-                        help="Stored encrypted. Never shown again.",
-                    )
-                    schema = st.text_input("Schema", value="public")
-                    tables = st.text_input("Tables (optional)", placeholder="orders, customers")
-                    if st.form_submit_button(
-                        "Test & connect", disabled=not info["postgres_enabled"]
-                    ):
-                        body = {
-                            "name": name or "My database",
-                            "url": url,
-                            "schema_name": schema or "public",
-                            "tables": [t.strip() for t in tables.split(",") if t.strip()] or None,
-                        }
-                        try:
-                            with st.spinner("Checking the connection is read-only…"):
-                                src = api("POST", "/sources/postgres", json=body)
-                        except ApiError as e:
-                            st.error(str(e))
-                        else:
-                            ss["next_source"] = src["source_id"]
-                            st.rerun()
-            with csv_tab, st.form("csv", clear_on_submit=True):
-                file = st.file_uploader("CSV file (UTF-8, header row)", type=["csv"])
-                table = st.text_input("Table name (optional)", placeholder="from the file name")
-                if st.form_submit_button("Upload") and file is not None:
-                    try:
-                        with st.spinner("Loading…"):
-                            src = api(
-                                "POST",
-                                "/sources/csv",
-                                files={"file": (file.name, file.getvalue(), "text/csv")},
-                                data={"table": table} if table else {},
-                                timeout=120.0,
-                            )
-                    except ApiError as e:
-                        st.error(str(e))
-                    else:
-                        ss["next_source"] = src["source_id"]
-                        st.rerun()
+        if st.button(
+            "Add data source",
+            icon=":material/add:",
+            type="secondary" if options else "primary",
+            width="stretch",
+        ):
+            ss.pop("pg_discover", None)
+            add_source_dialog(info)
     return sources
 
 
