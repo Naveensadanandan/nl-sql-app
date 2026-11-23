@@ -153,6 +153,41 @@ def delete_source(source_id: str, organisation_id: str) -> Source:
     return _source(row)
 
 
+def stored_dsn(source_id: str, organisation_id: str) -> str:
+    """The saved (decrypted) URL of a postgres source, for re-checking it. Never return or log."""
+    row = _row(source_id, organisation_id)
+    if row["kind"] != "postgres" or not row["dsn_enc"]:
+        raise SourceError("this source has no database connection")
+    return crypto.decrypt(row["dsn_enc"])
+
+
+def update_tables(source_id: str, organisation_id: str, tables: list[str]) -> Source:
+    """Replace the tables a source exposes. Values go back to 'pending' (they are re-indexed)."""
+    with app_db.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            app_db.q(
+                "UPDATE {s}.data_sources SET tables = %s, values_status = 'pending' "
+                "WHERE source_id = %s AND organisation_id = %s RETURNING *"
+            ),
+            (Jsonb(tables), source_id, organisation_id),
+        )
+        row = cur.fetchone()
+    if row is None:
+        raise SourceNotFound(source_id)
+    forget(source_id)
+    return _source(row)
+
+
+def tables_in_use(organisation_id: str, exclude_source_id: str | None = None) -> set[str]:
+    """Table names used by the organisation's other sources (they share one value index)."""
+    return {
+        t
+        for s in list_sources(organisation_id)
+        if s.source_id != exclude_source_id
+        for t in s.tables
+    }
+
+
 def set_values_status(source_id: str, status: str) -> None:
     with app_db.connection() as conn, conn.cursor() as cur:
         cur.execute(
@@ -188,6 +223,15 @@ def _build(row: dict[str, Any]) -> Target:
         url=url,
         role=role,
     )
+
+
+def knowledge_organisation(source_id: str | None, organisation_id: str | None) -> str | None:
+    """Organisation whose glossary and value index serve this question.
+
+    The shared demo data has its own knowledge (settings.demo_organisation_id), seeded at API
+    start; a user's own source uses the user's organisation.
+    """
+    return get_settings().demo_organisation_id if not source_id else organisation_id
 
 
 def target_for(source_id: str | None, organisation_id: str | None) -> Target:

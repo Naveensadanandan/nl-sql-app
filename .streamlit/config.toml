@@ -1,0 +1,14 @@
+# UI theme for `streamlit run ui/app.py` (run from the repo root so Streamlit finds this file).
+[theme]
+base = "light"
+primaryColor = "#1E3A8A"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F6FA"
+textColor = "#0F172A"
+font = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+headingFont = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+codeFont = "IBM Plex Mono:https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"
+baseRadius = "0.5rem"
+
+[theme.sidebar]
+backgroundColor = "#F4F6FA"

@@ -10,11 +10,27 @@ import asyncio
 import logging
 
 from nlsql.core.config import get_settings
-from nlsql.retrieval.value_search import client
+from nlsql.retrieval.value_search import client, index_name
 from nlsql.sources import registry
 from nlsql.worker import indexing
 
 log = logging.getLogger(__name__)
+
+
+async def forget_values(organisation_id: str, tables: list[str]) -> None:
+    """Drop indexed values of tables a source no longer exposes (best effort)."""
+    if not tables or not get_settings().es_url:
+        return
+    try:
+        await client().delete_by_query(
+            index=index_name(organisation_id),
+            query={"terms": {"table": tables}},
+            refresh=True,
+            conflicts="proceed",
+            ignore_unavailable=True,
+        )
+    except Exception as e:  # noqa: BLE001 - stale values only cost match quality
+        log.warning("could not drop values of removed tables: %s", type(e).__name__)
 
 
 async def index_source_values(source_id: str, organisation_id: str) -> None:

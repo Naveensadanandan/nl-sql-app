@@ -4,6 +4,7 @@ Shared by the admin server and, later, `python -m nlsql.worker.reindex`. The lay
 `retrieval/glossary_search.py` and `retrieval/value_search.py`; change them together.
 """
 
+import asyncio
 import csv
 import io
 import uuid
@@ -18,7 +19,8 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from qdrant_client import AsyncQdrantClient, models
 
 from nlsql.core.config import get_settings
-from nlsql.retrieval.value_search import index_name
+from nlsql.retrieval import embeddings
+from nlsql.retrieval.value_search import VECTOR_FIELD, index_name
 
 _NAMESPACE = uuid.UUID("6f1c2b0e-5d3a-4a55-9a43-0d6a1b9c7e11")
 _TEXT_TYPES = ("text", "character varying", "character")
@@ -160,21 +162,37 @@ async def save_proposed(
 
 # --------------------------------------------------------------- values -> Elasticsearch
 
-_VALUE_MAPPING: dict[str, Any] = {
-    "properties": {
-        "name": {"type": "text", "fields": {"raw": {"type": "keyword", "ignore_above": 512}}},
-        "synonyms": {"type": "text"},
-        "description": {"type": "text"},
-        "table": {"type": "keyword"},  # filter field: restricts search to the selected tables
-        "column": {"type": "keyword"},
+
+def _vector_mapping() -> dict[str, Any]:
+    return {
+        "type": "dense_vector",
+        "dims": embeddings.dims(),
+        "index": True,
+        "similarity": "cosine",
     }
-}
+
+
+def _value_mapping() -> dict[str, Any]:
+    return {
+        "properties": {
+            "name": {"type": "text", "fields": {"raw": {"type": "keyword", "ignore_above": 512}}},
+            "description": {"type": "text"},
+            "table": {"type": "keyword"},  # filter field: restricts search to the selected tables
+            "column": {"type": "keyword"},
+            VECTOR_FIELD: _vector_mapping(),  # semantic fallback (search_values_semantic)
+        }
+    }
 
 
 async def ensure_values_index(es: AsyncElasticsearch, organisation_id: str) -> str:
+    """Create the org's value index, or add the vector field to one made before it existed."""
     index = index_name(organisation_id)
     if not await es.indices.exists(index=index):
-        await es.indices.create(index=index, mappings=_VALUE_MAPPING)
+        await es.indices.create(index=index, mappings=_value_mapping())
+        return index
+    current = await es.indices.get_mapping(index=index)
+    if VECTOR_FIELD not in current[index]["mappings"].get("properties", {}):
+        await es.indices.put_mapping(index=index, properties={VECTOR_FIELD: _vector_mapping()})
     return index
 
 
@@ -244,7 +262,6 @@ def collect_values(
                         "id": f"{table}.{column}:{v}",
                         "name": v,
                         "description": "",
-                        "synonyms": [],
                         "table": table,
                         "column": column,
                     }
@@ -263,8 +280,14 @@ async def _actions(index: str, docs: list[dict[str, Any]]) -> AsyncIterator[dict
 async def index_values(
     es: AsyncElasticsearch, organisation_id: str, docs: list[dict[str, Any]], tables: list[str]
 ) -> int:
-    """Replace the indexed values of `tables` (so values deleted upstream disappear)."""
+    """Replace the indexed values of `tables` (so values deleted upstream disappear).
+
+    Each value is embedded (fastembed, local CPU) for the semantic fallback; values are only
+    the distinct category values, capped per column by value_max_distinct.
+    """
     index = await ensure_values_index(es, organisation_id)
+    vectors = await asyncio.to_thread(embeddings.embed, [d["name"] for d in docs])
+    docs = [{**d, VECTOR_FIELD: v} for d, v in zip(docs, vectors, strict=True)]
     if tables:
         await es.delete_by_query(
             index=index, query={"terms": {"table": tables}}, refresh=True, conflicts="proceed"

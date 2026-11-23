@@ -81,26 +81,105 @@ def check_identifier(name: str, what: str) -> str:
     return name
 
 
-def inspect_postgres(dsn: str, schema: str, tables: list[str] | None) -> list[str]:
-    """Validate the connection is read-only; return the tables the agent may query."""
-    check_identifier(schema, "schema")
-    for t in tables or []:
-        check_identifier(t, "table")
+def _connect(dsn: str) -> psycopg.Connection:
     try:
-        conn = psycopg.connect(normalize_dsn(dsn), connect_timeout=5, autocommit=False)
+        return psycopg.connect(normalize_dsn(dsn), connect_timeout=5, autocommit=False)
     except psycopg.Error as e:
         raise SourceError(
             "could not connect: check host, port, database, user and password, and that the "
             "server accepts connections from the app"
         ) from e
+
+
+def _check_role(cur: psycopg.Cursor) -> None:
+    """Refuse a superuser or a role that can write to any table (inside a read-only txn)."""
+    cur.execute("SET LOCAL statement_timeout = '10s'")
+    cur.execute("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
+    row = cur.fetchone()
+    if row is None or row[0]:
+        raise SourceError(f"this role is a superuser. {READ_ONLY_HELP}")
+    cur.execute(
+        """
+        SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind IN ('r', 'p')
+          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND n.nspname NOT LIKE 'pg_toast%'
+          AND has_table_privilege(c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE')
+        """
+    )
+    writable = (cur.fetchone() or (0,))[0]
+    if writable:
+        raise SourceError(f"this role can write to {writable} table(s). {READ_ONLY_HELP}")
+
+
+_READABLE_TABLES = """
+    SELECT n.nspname, c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
+      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND n.nspname NOT LIKE 'pg_toast%%' AND n.nspname NOT LIKE 'pg_temp%%'
+      AND has_schema_privilege(n.oid, 'USAGE')
+      AND has_table_privilege(c.oid, 'SELECT')
+    ORDER BY 1, 2
+    LIMIT %s
+"""
+DISCOVER_MAX_TABLES = 2000  # bound on what a browse returns (the UI shows it in a dropdown)
+
+
+def discover_postgres(dsn: str) -> list[dict[str, object]]:
+    """Check the role is read-only, then list each schema it can read and its readable tables.
+
+    A schema where the role may CREATE is listed with `blocked` set (it cannot be used), so
+    the user sees why instead of the schema silently missing.
+    """
+    conn = _connect(dsn)
     try:
         conn.read_only = True
         with conn.cursor() as cur:
-            cur.execute("SET LOCAL statement_timeout = '10s'")
-            cur.execute("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
-            row = cur.fetchone()
-            if row is None or row[0]:
-                raise SourceError(f"this role is a superuser. {READ_ONLY_HELP}")
+            _check_role(cur)
+            cur.execute(_READABLE_TABLES, (DISCOVER_MAX_TABLES,))
+            pairs = cur.fetchall()
+            schemas = sorted({str(sch) for sch, _ in pairs if _IDENT.match(str(sch))})
+            blocked: set[str] = set()
+            if schemas:
+                cur.execute(
+                    "SELECT nspname FROM pg_namespace WHERE nspname = ANY(%s) "
+                    "AND has_schema_privilege(oid, 'CREATE')",
+                    (schemas,),
+                )
+                blocked = {r[0] for r in cur.fetchall()}
+    except psycopg.Error as e:
+        raise SourceError(f"the connection check failed ({type(e).__name__})") from e
+    finally:
+        conn.close()
+    out: list[dict[str, object]] = []
+    for sch in schemas:
+        tables = [str(t) for s_, t in pairs if s_ == sch and _IDENT.match(str(t))]
+        out.append(
+            {
+                "schema_name": sch,
+                "tables": tables,
+                "blocked": (
+                    f"this role may CREATE in schema {sch!r}; grant USAGE only"
+                    if sch in blocked
+                    else None
+                ),
+            }
+        )
+    if not out:
+        raise SourceError(f"this role cannot read any table. {READ_ONLY_HELP}")
+    return out
+
+
+def inspect_postgres(dsn: str, schema: str, tables: list[str] | None) -> list[str]:
+    """Validate the connection is read-only; return the tables the agent may query."""
+    check_identifier(schema, "schema")
+    for t in tables or []:
+        check_identifier(t, "table")
+    conn = _connect(dsn)
+    try:
+        conn.read_only = True
+        with conn.cursor() as cur:
+            _check_role(cur)
             cur.execute(
                 "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = %s), "
                 "has_schema_privilege(current_user, (SELECT oid FROM pg_namespace "
@@ -112,18 +191,6 @@ def inspect_postgres(dsn: str, schema: str, tables: list[str] | None) -> list[st
                 raise SourceError(f"schema {schema!r} not found (or not visible to this role)")
             if can_create:
                 raise SourceError(f"this role may CREATE in schema {schema!r}. {READ_ONLY_HELP}")
-            cur.execute(
-                """
-                SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE c.relkind IN ('r', 'p')
-                  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-                  AND n.nspname NOT LIKE 'pg_toast%'
-                  AND has_table_privilege(c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE')
-                """
-            )
-            writable = (cur.fetchone() or (0,))[0]
-            if writable:
-                raise SourceError(f"this role can write to {writable} table(s). {READ_ONLY_HELP}")
             cur.execute(
                 """
                 SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -149,5 +216,5 @@ def inspect_postgres(dsn: str, schema: str, tables: list[str] | None) -> list[st
         raise SourceError(f"no readable tables in schema {schema!r}")
     cap = get_settings().source_max_tables
     if len(readable) > cap:
-        raise SourceError(f"{len(readable)} tables found; pick at most {cap} with 'tables'")
+        raise SourceError(f"{len(readable)} tables selected; pick at most {cap}")
     return readable

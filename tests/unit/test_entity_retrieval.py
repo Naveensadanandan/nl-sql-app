@@ -120,8 +120,9 @@ async def test_resolve_values_only_searches_db_values(monkeypatch, settings):
         return [_item("5000 ml Coconut Oil", 9.0)]
 
     monkeypatch.setattr(rk, "search_values", fake_search)
+    # No source_id = shared demo data: the demo organisation's index, never the asker's.
     out = await rk.resolve_values({"entities": _ENTITIES, "organisation_id": "acme"})
-    assert seen == [("5l coconut oil", "acme")]
+    assert seen == [("5l coconut oil", get_settings().demo_organisation_id)]
     assert out["resolved_values"][0].status == "resolved"
 
 

@@ -110,7 +110,20 @@ after the TTL. Expired rows are cleaned up at the next log-in.
 
 ## 3. Bringing your data in (secured)
 
-Pick or add a source in the sidebar, under **Data source**.
+After log-in the sidebar has two pages. **Get started** tours the shared demo data (tables
+and 5 sample rows from `GET /sources/preview`), its business terms and indexed values
+(`GET /sources/knowledge`), offers sample questions, and always asks on the demo data.
+**Workspace** is where you pick or add a source, under **Data source**: **Add data source**
+opens a dialog, and **Manage tables** changes the tables of the selected source.
+
+**Demo knowledge.** Questions on the shared demo data (from either page) use the glossary
+(Qdrant) and value index (Elasticsearch, `values_demo_organisation`) of the reserved
+organisation `NLSQL_DEMO_ORGANISATION_ID` (default `demo_organisation`), never the asker's.
+So every user's demo gives the same answers, and nobody's own glossary changes them. The API
+seeds both at start (`nlsql/knowledge/demo.py`; run it by hand with
+`python -m nlsql.knowledge.demo`). Glossary seeding only adds missing entries, so an admin
+upload to the demo organisation replaces a seeded entry. The demo glossary is read-only for
+users: drafted definitions are shown but not saved. Nobody can sign up with that organisation id.
 
 ### a) Connect your own Postgres (the "user server")
 
@@ -124,19 +137,30 @@ Pick or add a source in the sidebar, under **Data source**.
    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO nlsql_reader;
    ```
 
-2. Paste `postgresql://nlsql_reader:<password>@<host>:5432/mydb`, the schema and, optionally,
-   the tables you want to use. The URL must contain a user and a password and name one host.
-   Sockets, `service=`, `passfile=` and `options=` are refused (they could borrow the API
-   server's own credentials), and so is this app's own database.
-3. The API (`sources/postgres.py`) connects with a 5 s timeout inside a read-only
-   transaction and **refuses** the role if it is a superuser, can `CREATE` in the schema, or
-   can `INSERT/UPDATE/DELETE/TRUNCATE` any table. Error messages never repeat the URL or the
-   server's own text.
-4. The URL is **encrypted with Fernet** (`NLSQL_FERNET_KEY`) before it is stored
+2. Enter host, port, database, user and password (or paste
+   `postgresql://nlsql_reader:<password>@<host>:5432/mydb`) and click **Test connection**.
+   The URL must contain a user and a password and name one host. Sockets, `service=`,
+   `passfile=` and `options=` are refused (they could borrow the API server's own
+   credentials), and so is this app's own database.
+3. The API (`sources/postgres.py`, `POST /sources/postgres/discover`) connects with a 5 s
+   timeout inside a read-only transaction and **refuses** the role if it is a superuser or can
+   `INSERT/UPDATE/DELETE/TRUNCATE` any table. It then lists every schema the role can read and
+   its readable tables. A schema where the role may `CREATE` is shown as unusable. Nothing is
+   saved yet. Error messages never repeat the URL or the server's own text.
+4. Pick a schema and the tables (all are ticked, up to `NLSQL_SOURCE_MAX_TABLES`), then click
+   **Connect**. `POST /sources/postgres` runs the check again for that schema and saves.
+5. The URL is **encrypted with Fernet** (`NLSQL_FERNET_KEY`) before it is stored
    (`data_sources.dsn_enc`). The API never returns it, never logs it, and never puts it in the
    agent state (which is traced to LangSmith). The state holds only `source_id`.
-5. In the background, distinct values of text columns are indexed into Elasticsearch, so
+6. In the background, distinct values of text columns are indexed into Elasticsearch, so
    "5l coconut oil" can match `5000 ml Coconut Oil`. The sidebar shows `value index: indexed`.
+
+**Adding tables later.** **Manage tables** on a saved Postgres source reuses the stored
+connection, so nobody types the URL again. It lists the tables the saved role can read in the
+source's schema (`GET /sources/{id}/tables`, which re-checks the role is read-only) and saves
+the new pick (`PUT /sources/{id}/tables`, checked again). Values are re-indexed in the
+background, and values of removed tables are dropped from the index unless another source in
+the organisation uses a table of the same name. To use another schema, add a second source.
 
 Every question then runs on your server with the same protections as before:
 `sqlglot` validation, a `READ ONLY` transaction, a statement timeout, an EXPLAIN cost limit and
@@ -150,7 +174,10 @@ a row cap. On top of that, the role itself can only read.
    text), and the rows are loaded with `COPY`. SELECT on it is granted only to the role
    `ws_<your organisation>_reader` (created on first upload; the API's writer needs `CREATEROLE`).
 3. Values are indexed into Elasticsearch, as for Postgres.
-4. Deleting the source drops that table.
+4. To join several files, add more CSVs to the same source with **Manage tables** →
+   **Add a table from another CSV** (`POST /sources/{id}/csv`). Each file becomes another table
+   in the same schema. Removing a table there drops it.
+5. Deleting the source drops its tables.
 
 ---
 
@@ -208,8 +235,9 @@ Optional, a third terminal for the admin server (glossary CSV upload):
 
 ### Try it
 
-1. Open http://localhost:8501, then go to **Create account**, then **Log in**.
-2. In the sidebar, open **Add data source**, then **Upload CSV**, and choose a small sales CSV.
+1. Open http://localhost:8501, then go to **Create account**, then **Log in**. You land on
+   **Get started**: try a sample question on the demo data there.
+2. Open **Workspace** in the sidebar, open **Add data source**, then **Upload CSV**, and choose a small sales CSV.
 3. Ask *"total amount of coconut oil 5l sold by region"*.
 4. The left side shows the answer, the SQL that ran and the result table. The right side has
    expandable panels:
@@ -228,8 +256,14 @@ Optional, a third terminal for the admin server (glossary CSV upload):
 | POST | `/auth/logout` | token | ends the session |
 | GET | `/auth/me` | token | who am I |
 | GET | `/sources` | token | your organisation's sources |
-| POST | `/sources/postgres` | token | test (read-only) + save an encrypted connection |
+| POST | `/sources/postgres/discover` | token | `{url}`: test (read-only) + list readable schemas and tables; saves nothing |
+| POST | `/sources/postgres` | token | `{name, url, schema_name, tables?}`: test again + save an encrypted connection |
 | POST | `/sources/csv` | token | upload a CSV (multipart `file`, optional `table`, `name`) |
+| GET | `/sources/{id}/tables` | token | tables the source uses (`selected`) and could use (`available`; Postgres re-checks the saved role) |
+| PUT | `/sources/{id}/tables` | token | `{tables}`: replace the source's tables (Postgres re-checks; a CSV table left out is dropped) |
+| POST | `/sources/{id}/csv` | token | add a CSV as another table of a CSV source (multipart `file`, optional `table`) |
+| GET | `/sources/knowledge?source_id=` | token | glossary terms + indexed values questions on that source use (default: demo organisation) |
+| GET | `/sources/preview?source_id=&rows=5` | token | columns + first rows of each table (default: shared demo data); validated, read-only SQL |
 | DELETE | `/sources/{id}` | token | remove a source (drops an uploaded table) |
 | POST | `/ask` | token | `{question, source_id?, business_context?}` |
 | GET | `/questions/{id}` | token | stored SQL, rows, interpretation |

@@ -90,7 +90,10 @@ def grounding_context(state: AgentState) -> str:
         if v.status == "resolved" and v.match:
             m = v.match
             where = f"{m.table}.{m.column}" if m.table and m.column else "unknown column"
-            resolved.append(f"- \"{line(v.text)}\" -> {line(where)} = '{line(m.name)}'")
+            resolved.append(
+                f"- \"{line(v.text)}\" -> {line(where)} = '{line(m.name)}'"
+                + (" (matched by meaning)" if v.method == "semantic" else "")
+            )
         else:
             options = "; ".join(
                 f"{line(c.table)}.{line(c.column)} = '{line(c.name)}'" for c in v.candidates[:5]
@@ -175,8 +178,16 @@ def build_interpretation(state: AgentState) -> Interpretation:
                     for c in v.candidates[:5]
                     if m is None or c.id != m.id
                 ],
+                method=v.method,
             )
         )
+    # A semantic match is a guess about meaning, not spelling: say so (CLAUDE.md conventions).
+    semantic = [
+        f"\"{v.text}\" was read as {v.match.table}.{v.match.column} = '{v.match.name}' "
+        "(similar meaning, not the same spelling)"
+        for v in state.get("resolved_values", [])
+        if v.status == "resolved" and v.method == "semantic" and v.match
+    ]
 
     result = state.get("result")
     outcome = outcome_of(state)
@@ -186,7 +197,7 @@ def build_interpretation(state: AgentState) -> Interpretation:
         definitions=definitions,
         values=values,
         unclear_terms=unclear_terms(state),
-        assumptions=list(gen.assumptions) if gen else [],
+        assumptions=semantic + (list(gen.assumptions) if gen else []),
         missing_definitions=list(gen.missing_definitions) if gen else [],
         repairs=[Repair(**h) for h in state.get("sql_history", [])],
         ungrounded_terms=ungrounded if outcome == "success" else [],

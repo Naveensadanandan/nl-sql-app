@@ -1,6 +1,7 @@
+import re
 from functools import lru_cache
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,6 +43,11 @@ class Settings(BaseSettings):
     es_url: str | None = None
     value_min_score: float = 1.0  # BM25 score below which a hit is ignored
     value_ambiguity_ratio: float = 0.8  # 2nd hit >= ratio * top hit -> ask the user to choose
+    # Semantic fallback (kNN on fastembed vectors, embedding_model) when BM25 finds nothing.
+    # Calibrate both numbers on evals/datasets/values.jsonl when the embedding model changes.
+    value_semantic_enabled: bool = True
+    value_semantic_min_score: float = 0.75  # cosine similarity floor for a semantic hit
+    value_semantic_margin: float = 0.03  # 2nd hit within this cosine of the top -> ambiguous
 
     # Business definitions (Qdrant). Leave qdrant_url unset until the server exists.
     qdrant_url: str | None = None
@@ -83,6 +89,18 @@ class Settings(BaseSettings):
     # Questions without a data source use the configured data_schema / data_tables, shared by
     # every user (demo data). Set false so each user must connect or upload their own data.
     shared_data_enabled: bool = True
+    # Knowledge (Qdrant glossary + ES values) for questions on the shared demo data lives under
+    # this reserved organisation, not the asker's, so every user's demo sees the same terms and
+    # their own glossary never leaks into it. Seeded at API start (nlsql.knowledge.demo).
+    demo_organisation_id: str = "demo_organisation"
+
+    @field_validator("demo_organisation_id")
+    @classmethod
+    def _demo_org(cls, v: str) -> str:
+        v = v.strip().lower()  # same rule as a new organisation (core.accounts.NEW_ORGANISATION)
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_]{1,39}", v):
+            raise ValueError("demo_organisation_id: 2-40 chars of a-z, 0-9, '_'")
+        return v
 
     @property
     def sqlalchemy_url(self) -> str:

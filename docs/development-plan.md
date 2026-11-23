@@ -19,7 +19,8 @@ Build in order: every phase depends on the eval harness from Phase 0/1.
 - [ ] `sql/executor.py`: read-only transaction, timeout, row cap
 - [ ] Graph v1: route → retrieve_schema → generate → validate → execute → correct loop → respond
 - [ ] FastAPI `/sources`, `/chat` (SSE). Streamlit UI showing table + SQL + upload page
-  (done: `/auth`, `/sources`, Streamlit login + ask + upload/connect UI; pending: `/chat` SSE)
+  (done: `/auth`, `/sources`, Streamlit login + ask + upload/connect UI, pick schema/tables from
+  the connection, Manage tables on saved sources, multi-CSV sources; pending: `/chat` SSE)
 - [ ] Two demo datasets (retail sales CSV, Northwind-style PG). Build `nl2sql_core` (150 Qs) + `smoke` eval suites and `evals/run.py`
 - **Exit:** ≥ 70% execution accuracy on `nl2sql_core`. Zero validator bypasses in the adversarial tests.
 
